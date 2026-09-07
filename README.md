@@ -37,12 +37,14 @@ archetype — each uses a different journey structure and shape language from
 `references/camera-archetypes.md` / `references/scene-recipes.md`. Full runnable source
 for each is in `examples/`.
 
+[**Try all four live →**](https://scroll-flyover-demo.vercel.app)
+
 |     |     |     |
 | --- | --- | --- |
 | ![Alta Finca — nature, island hop](examples/nature-coffee-farm/preview.png) | ![Marco Estudio — architecture, corridor](examples/architecture-studio/preview-1.png) | ![Marco Estudio — architecture, corridor](examples/architecture-studio/preview-2.png) |
-| **Alta Finca** — coffee farm · low-poly organic · island hop | **Marco Estudio** — architecture studio · geometric · corridor/tunnel | |
+| **[Alta Finca](https://scroll-flyover-demo.vercel.app/examples/nature-coffee-farm/)** — coffee farm · low-poly organic · island hop | **[Marco Estudio](https://scroll-flyover-demo.vercel.app/examples/architecture-studio/)** — architecture studio · geometric · corridor/tunnel | |
 | ![Nexo Ops — SaaS, vertical descent](examples/saas-nexo-ops/preview-1.png) | ![Nexo Ops — SaaS, vertical descent](examples/saas-nexo-ops/preview-2.png) | ![Ala Sneaker — product, orbit showcase](examples/product-ala-sneaker/preview.png) |
-| **Nexo Ops** — project-mgmt SaaS · geometric · vertical descent | | **Ala Sneaker** — product launch · toy/rounded · orbit showcase |
+| **[Nexo Ops](https://scroll-flyover-demo.vercel.app/examples/saas-nexo-ops/)** — project-mgmt SaaS · geometric · vertical descent | | **[Ala Sneaker](https://scroll-flyover-demo.vercel.app/examples/product-ala-sneaker/)** — product launch · toy/rounded · orbit showcase |
 
 Building these surfaced four real bugs in `references/scrub-engine.js` itself (the
 scroll-pin effect didn't work out of the box, a lost WebGL context froze the flight
@@ -50,14 +52,15 @@ permanently, adjacent scenes' copy could overlap, copy text could fail WCAG cont
 against its own scene) — all fixed; see `references/production-lessons.md` for what
 broke and why.
 
-Each example's `index.html` loads its scripts as ES modules (`type="module"`), which
-browsers block from a `file://` origin with a CORS error. Serve the repo over HTTP to
-view them: `node scripts/serve.mjs` from the repo root, then open
-`http://localhost:8080/examples/<name>/index.html`. Common alternatives break this in
-non-obvious ways — Python's `http.server` can serve `.js` as `text/plain` depending on
-the OS's MIME registry, and `npx serve` / `npx http-server` redirect `index.html` URLs
-to an extensionless path, which silently breaks the examples' relative `import`
-paths — so `scripts/serve.mjs` is a small dependency-free server that does neither.
+To run an example's source locally instead of the live version: each `index.html` loads
+its scripts as ES modules (`type="module"`), which browsers block from a `file://`
+origin with a CORS error. Serve the repo over HTTP to view them: `node scripts/serve.mjs`
+from the repo root, then open `http://localhost:8080/examples/<name>/index.html`. Common
+alternatives break this in non-obvious ways — Python's `http.server` can serve `.js` as
+`text/plain` depending on the OS's MIME registry, and `npx serve` / `npx http-server`
+redirect `index.html` URLs to an extensionless path, which silently breaks the examples'
+relative `import` paths — so `scripts/serve.mjs` is a small dependency-free server that
+does neither.
 
 ## Install
 
@@ -143,9 +146,10 @@ applied during the interview and scene-building steps, not a separate pipeline s
   engine file gets that fix for free.
 - **`references/production-lessons.md`** is the running list of what production use
   surfaces that the original design didn't anticipate, and grows with each new build.
-- **Not yet done:** the gallery examples exist as source + preview screenshots but
-  aren't deployed anywhere live (unlike the portfolio build) — viewing them requires
-  cloning the repo and running `scripts/serve.mjs` locally.
+- **All four gallery examples are deployed live** at
+  [scroll-flyover-demo.vercel.app](https://scroll-flyover-demo.vercel.app) (source in
+  [jasc66/scroll-flyover-demo](https://github.com/jasc66/scroll-flyover-demo)) — no
+  clone/build step needed to see them.
 
 ## License
 
