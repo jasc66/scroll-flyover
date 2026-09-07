@@ -58,6 +58,25 @@ from.
 - `references/index-template.html` — a minimal standalone page that mounts the engine
   via a free Three.js CDN import map.
 
+## Accessibility QA
+
+The final QA step (SKILL.md Step 8) invokes an `accessibility-reviewer`-style agent
+against the finished build's HTML overlay — the WebGL canvas itself is out of scope
+(it's a rendered picture, not semantic content), but the copy overlay, CTA and
+route-rail buttons, the crawlable SEO block, and the `prefers-reduced-motion` fallback
+all are. Findings are treated as QA failures to fix before calling a build done, not
+deferred. This requires the `Agent` tool, listed in `SKILL.md`'s `allowed-tools`.
+
+## Deliberate uniqueness
+
+The single biggest risk with a skill like this isn't a usability bug — it's every
+build looking like a sibling of the same Three.js tutorial demo, since builds share a
+small set of shape-language vocabularies and a common primitive toolbox. `SKILL.md`'s
+closing section addresses this head-on: push the interview past the generic subject
+category, turn the one non-generic detail into a signature motif repeated across every
+scene, and deliberately break exactly one visual convention per build. This is a lens
+applied during the interview and scene-building steps, not a separate pipeline stage.
+
 ## Status
 
 Used to build a real portfolio site (a spiral-ascent 3D tower embedded in a
