@@ -37,12 +37,16 @@
       return new THREE.Mesh(new THREE.IcosahedronGeometry(radius, 0), material);
     }
 
-    function buildSceneA(materials) {
+    // Signature is build(materials, textures, options) — options.rng is the ONLY
+    // permitted random source (SKILL.md Step 2). Math.random() would make every
+    // reload place rocks differently, which is exactly the "page looks different on
+    // every reload" gotcha (references/gotchas.md) this skill exists to avoid.
+    function buildSceneA(materials, textures, { rng }) {
       const g = new THREE.Group();
       g.add(buildIslandBase(6, 1.2, materials[0]));
       for (let i = 0; i < 5; i++) {
-        const rock = buildRock(0.6 + Math.random() * 0.6, materials[1]);
-        rock.position.set((Math.random() - 0.5) * 8, 0.8, (Math.random() - 0.5) * 8);
+        const rock = buildRock(0.6 + rng() * 0.6, materials[1]);
+        rock.position.set((rng() - 0.5) * 8, 0.8, (rng() - 0.5) * 8);
         g.add(rock);
       }
       return g;
@@ -64,6 +68,7 @@
       shapeLanguage: 'lowpoly',   // 'lowpoly' | 'geometric' | 'toy'
       cameraFeel: 'swoop',        // 'swoop' | 'glide'
       performance: 'rich',        // 'rich' | 'light'
+      seed: 20260906,             // any integer — reproducible builds (SKILL.md Step 2)
       scenes: [
         {
           build: buildSceneA,
