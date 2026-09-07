@@ -1,5 +1,7 @@
 # Procedural 3D Scroll Experiences
 
+[![npm downloads](https://img.shields.io/npm/dt/scroll-flyover.svg)](https://www.npmjs.com/package/scroll-flyover)
+
 A [Claude Code](https://claude.com/claude-code) skill for building cinematic,
 scroll-driven Three.js worlds.
 
@@ -64,7 +66,14 @@ does neither.
 
 ## Install
 
-Drop this repo's contents into your Claude Code skills directory:
+```bash
+npx scroll-flyover
+```
+
+Copies `SKILL.md` and `references/` into `~/.claude/skills/scroll-flyover`. Restart
+Claude Code (or start a new session) to pick it up.
+
+Or clone the repo directly:
 
 ```bash
 git clone <this-repo-url> ~/.claude/skills/scroll-flyover

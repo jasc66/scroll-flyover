@@ -1,0 +1,34 @@
+{
+  "name": "scroll-flyover",
+  "version": "1.0.0",
+  "description": "Claude Code skill: build cinematic, scroll-driven Three.js/WebGL fly-through landing pages — no AI image/video generation, zero per-build cost.",
+  "bin": {
+    "scroll-flyover": "bin/install.js"
+  },
+  "files": [
+    "bin",
+    "SKILL.md",
+    "references"
+  ],
+  "keywords": [
+    "claude-code",
+    "claude-skill",
+    "threejs",
+    "webgl",
+    "scrollytelling",
+    "3d"
+  ],
+  "homepage": "https://github.com/jasc66/scroll-flyover#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jasc66/scroll-flyover.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jasc66/scroll-flyover/issues"
+  },
+  "author": "Alonso Salguero C.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.7.0"
+  }
+}
