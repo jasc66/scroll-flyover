@@ -18,7 +18,7 @@ description: >
   user wants a "3D world" / "browse-through-the-industry" hero, a scroll cinematic,
   a diorama landing, or a free/self-hosted alternative to AI-video scroll sites —
   especially when the user explicitly does not want to pay for image/video generation.
-allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
+allowed-tools: Bash, Read, Write, Edit, AskUserQuestion, Agent
 ---
 
 # scroll-flyover
@@ -460,6 +460,20 @@ work harder than the AI-video approach:
   framework adaptation.
 - Grep the finished build for `Math.random` (should be zero) and confirm each canvas
   texture generator is called once, not per scene.
+- **Run an accessibility audit on the HTML overlay** — if an `accessibility-reviewer`
+  agent (or equivalent) is available, invoke it against the finished page. Scope it
+  correctly: the WebGL canvas itself is not auditable (it's a rendered picture, not
+  semantic content) and is out of scope by design — the actual accessibility surface
+  of a flyover build is everything layered on top of it: the copy overlay (heading
+  structure, color contrast per Step 4/`production-lessons.md`'s 3D-vs-HTML color
+  note), the CTA and route-rail buttons (44×44px targets, `aria-label`s, real
+  `<button>` elements — Step 5), the crawlable SEO block (semantic tags, not just
+  present but structured as real headings/paragraphs — this Step), and the
+  `prefers-reduced-motion` fallback (content fully readable, not just animation-free).
+  Tell the agent explicitly to skip the canvas and focus there; feeding it a page
+  that's "mostly a `<canvas>`" without that scoping wastes the pass on a false
+  negative. Treat its findings the same as any other QA failure — fix before calling
+  the build done, don't defer "for later."
 
 ---
 
