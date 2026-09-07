@@ -7,9 +7,9 @@ reference files describe the happy path; this one is the list of ways the happy 
 breaks in a real host page. Read it **before** debugging a stuck/black/jerky build —
 check this list before re-deriving the camera math from scratch.
 
-## Three engine bugs found and fixed while building the example gallery
+## Four engine bugs found and fixed while building the example gallery
 
-`references/scrub-engine.js` and `references/index-template.html` had three real
+`references/scrub-engine.js` and `references/index-template.html` had four real
 defects, not host-page integration mistakes — found by actually running four fresh
 example builds through Playwright (not just eyeballing one scroll position) and
 confirmed with positive/negative controls before and after each fix:
@@ -47,8 +47,35 @@ confirmed with positive/negative controls before and after each fix:
    scanning the full scroll range at 2% steps and counting simultaneously-visible
    panels (>1 at many points) before the fix, zero after. **Fix:** multiplier changed
    to `0.9`.
+4. **The copy overlay's text could fail WCAG contrast against its own scene, on every
+   single build.** The engine hardcoded the copy panel to `color: '#fff'` plus a blurred
+   `text-shadow` — no solid backing — floating directly over the live WebGL canvas.
+   That's fine only as long as whatever's rendered behind it stays dark; nothing
+   guaranteed that. `scene.background` is a vertical gradient between
+   `palette.colors[0]` and `palette.colors[last]`, and those hexes are picked in Step
+   1.3/`materials.md` for how they look as lit 3D material, never checked against flat
+   white HTML text (this file's own "Color" section, below, already warned builders to
+   do that check manually for reused accent colors — the engine itself wasn't doing it
+   for its own built-in overlay). Measured with the WCAG relative-luminance formula
+   against all four gallery builds' actual gradient stops: white text scored as low as
+   **1.13:1** against `product-ala-sneaker`'s light cream top stop (spec minimum is
+   4.5:1 for body text) and 1.97:1 / 2.76:1 against two other builds' bottom stops —
+   confirmed visually with a Playwright screenshot (title/body text nearly invisible on
+   a light-gray frame) before the fix. The CTA button had the same shape of bug one
+   layer down: its text was hardcoded `color: '#111'` against `palette.accent`, which
+   passed for three of the four builds' accents but measured 3.47:1 (fail) against
+   `nature-coffee-farm`'s dark red. **Fix:** the copy panel now sits on a solid-ish
+   scrim (`rgba(10,10,16,0.62)` + backdrop blur) instead of a bare shadow, so its
+   contrast no longer depends on the scene behind it; the same scrim was applied to
+   `renderStaticFallback` (the no-WebGL/reduced-motion path, which was reading the same
+   two palette hexes into a `linear-gradient` background with the same hardcoded white
+   text). The CTA button's text color is now picked at build time by a small
+   `readableTextColor(bgHex)` helper (WCAG relative luminance, black below the 0.179
+   crossover point, white above) instead of a fixed `#111`. Verified with Playwright
+   screenshots against all four gallery builds post-fix — see
+   `references/gotchas.md`'s contrast entry.
 
-If a build made with an OLDER copy of `scrub-engine.js` shows any of these three
+If a build made with an OLDER copy of `scrub-engine.js` shows any of these four
 symptoms, the fix is to re-copy the current `references/scrub-engine.js`, not to patch
 around it in host-page code.
 
@@ -203,6 +230,11 @@ page background before trusting a shared hex in both places. This applies to the
 signature-motif accent color too (Deliberate Uniqueness, SKILL.md) if it appears in
 both the 3D scene (ring, glow, emissive prop) and any HTML control (an active-state
 dot, a badge) — verify contrast for the HTML use independently of how the 3D use looks.
+
+The engine's own built-in copy panel and CTA button no longer need this manual check —
+see bug 4 above, they're now self-guarding (solid scrim + `readableTextColor()`). This
+section still applies to anything a builder adds by hand: tag borders, the route rail,
+or any other HTML element that reaches for a palette hex directly.
 
 ## `pointer-events` on overlapping opacity-toggled panels
 

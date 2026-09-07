@@ -21,6 +21,25 @@ const SCENE_RADIUS = 6;
 const DEFAULT_SPACING = 24;
 
 /**
+ * WCAG relative luminance (sRGB), used to pick a readable text color against an
+ * arbitrary hex background rather than assuming one fixed color always works.
+ */
+function relativeLuminance(hex) {
+  const c = hex.replace('#', '');
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(c.substring(i, i + 2), 16) / 255);
+  const f = (v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+
+// 0.179 is the luminance where black-on-bg and white-on-bg contrast ratios cross over —
+// below it white text reads better, above it black does. Palettes are 3D-material hexes
+// picked for how they look lit in WebGL, not validated as flat HTML colors (see
+// references/gotchas.md), so a build's accent can land on either side.
+function readableTextColor(bgHex) {
+  return relativeLuminance(bgHex) > 0.179 ? '#111' : '#fff';
+}
+
+/**
  * Deterministic RNG (mulberry32). Scene builders MUST use this instead of
  * Math.random(): with Math.random() a brand's page renders differently on every
  * reload and on every visitor's screen, which is wrong for a brand site (you can't
@@ -198,16 +217,24 @@ export function mountScrollFlyover(container, config) {
     const el = document.createElement('div');
     el.className = 'sf-section';
     Object.assign(el.style, {
-      position: 'absolute', left: '6%', bottom: '10%', maxWidth: '440px',
+      position: 'absolute', left: '6%', bottom: '10%', maxWidth: '440px', boxSizing: 'border-box',
       opacity: '0', transition: 'opacity 0.5s ease', color: '#fff',
-      textShadow: '0 2px 12px rgba(0,0,0,0.45)', fontFamily: 'system-ui, sans-serif',
+      fontFamily: 'system-ui, sans-serif',
+      // A flat text-shadow over live WebGL isn't reliable contrast — the scene
+      // gradient behind this panel is picked per-build for how it looks lit, not
+      // for HTML contrast (references/gotchas.md), and can land near-white (e.g.
+      // a light palette's top stop), leaving white text unreadable. A solid-ish
+      // scrim guarantees contrast against ANY background, unlike a blur shadow.
+      background: 'rgba(10,10,16,0.62)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+      padding: '1.1em 1.3em', borderRadius: '12px',
     });
+    const ctaTextColor = readableTextColor(palette.accent || '#e8a33d');
     el.innerHTML = `
       ${sceneCfg.eyebrow ? `<div style="letter-spacing:0.1em;text-transform:uppercase;font-size:0.75rem;opacity:0.8">${sceneCfg.eyebrow}</div>` : ''}
       <h2 style="font-size:2rem;margin:0.3em 0;font-weight:700">${sceneCfg.title || ''}</h2>
       <p style="font-size:1rem;line-height:1.5;opacity:0.9">${sceneCfg.body || ''}</p>
       ${(sceneCfg.tags || []).map(t => `<span style="display:inline-block;margin:0.3em 0.4em 0 0;padding:0.2em 0.7em;border:1px solid rgba(255,255,255,0.5);border-radius:999px;font-size:0.8rem">${t}</span>`).join('')}
-      ${sceneCfg.cta ? `<div style="margin-top:1em"><button style="pointer-events:auto;min-height:44px;min-width:44px;padding:0.6em 1.4em;border:none;border-radius:8px;background:${palette.accent || '#e8a33d'};color:#111;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${sceneCfg.cta}</button></div>` : ''}
+      ${sceneCfg.cta ? `<div style="margin-top:1em"><button style="pointer-events:auto;min-height:44px;min-width:44px;padding:0.6em 1.4em;border:none;border-radius:8px;background:${palette.accent || '#e8a33d'};color:${ctaTextColor};font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${sceneCfg.cta}</button></div>` : ''}
     `;
     overlay.appendChild(el);
     return el;
@@ -496,8 +523,11 @@ function renderStaticFallback(container, palette, scenes, keepExisting = false) 
     minHeight: '60vh', display: 'flex', flexDirection: 'column', justifyContent: 'center',
     alignItems: 'center', textAlign: 'center', padding: '2rem',
     background: `linear-gradient(${palette.colors[0]}, ${palette.colors[palette.colors.length - 1]})`,
-    color: '#fff', fontFamily: 'system-ui, sans-serif',
+    fontFamily: 'system-ui, sans-serif',
   });
-  fallback.innerHTML = `<h2 style="font-size:1.6rem">${scenes[0]?.title || ''}</h2><p>${scenes[0]?.body || ''}</p>`;
+  // Same reasoning as the copy overlay: the gradient stops are 3D-material hexes, not
+  // WCAG-checked HTML colors, so fixed white text can land on a near-white stop. This
+  // path also carries no-WebGL/reduced-motion visitors, so it must not silently fail.
+  fallback.innerHTML = `<div style="background:rgba(10,10,16,0.62);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:12px;padding:1.3em 1.6em;color:#fff"><h2 style="font-size:1.6rem;margin:0 0 0.4em">${scenes[0]?.title || ''}</h2><p style="margin:0">${scenes[0]?.body || ''}</p></div>`;
   container.appendChild(fallback);
 }

@@ -44,10 +44,20 @@ for each is in `examples/`.
 | ![Nexo Ops — SaaS, vertical descent](examples/saas-nexo-ops/preview-1.png) | ![Nexo Ops — SaaS, vertical descent](examples/saas-nexo-ops/preview-2.png) | ![Ala Sneaker — product, orbit showcase](examples/product-ala-sneaker/preview.png) |
 | **Nexo Ops** — project-mgmt SaaS · geometric · vertical descent | | **Ala Sneaker** — product launch · toy/rounded · orbit showcase |
 
-Building these surfaced three real bugs in `references/scrub-engine.js` itself (the
+Building these surfaced four real bugs in `references/scrub-engine.js` itself (the
 scroll-pin effect didn't work out of the box, a lost WebGL context froze the flight
-permanently, adjacent scenes' copy could overlap) — all fixed; see
-`references/production-lessons.md` for what broke and why.
+permanently, adjacent scenes' copy could overlap, copy text could fail WCAG contrast
+against its own scene) — all fixed; see `references/production-lessons.md` for what
+broke and why.
+
+Each example's `index.html` loads its scripts as ES modules (`type="module"`), which
+browsers block from a `file://` origin with a CORS error. Serve the repo over HTTP to
+view them: `node scripts/serve.mjs` from the repo root, then open
+`http://localhost:8080/examples/<name>/index.html`. Common alternatives break this in
+non-obvious ways — Python's `http.server` can serve `.js` as `text/plain` depending on
+the OS's MIME registry, and `npx serve` / `npx http-server` redirect `index.html` URLs
+to an extensionless path, which silently breaks the examples' relative `import`
+paths — so `scripts/serve.mjs` is a small dependency-free server that does neither.
 
 ## Install
 
@@ -94,6 +104,10 @@ from.
   its mount function instead of adapting it as-is (e.g. a host app with its own i18n).
 - `references/index-template.html` — a minimal standalone page that mounts the engine
   via a free Three.js CDN import map.
+- `scripts/serve.mjs` — a dependency-free static file server for viewing `examples/`
+  locally (`node scripts/serve.mjs`); see the gallery section above for why a plain
+  `file://` open or common alternatives (`python -m http.server`, `npx serve`) don't
+  work for these builds.
 
 ## Accessibility QA
 
@@ -116,10 +130,22 @@ applied during the interview and scene-building steps, not a separate pipeline s
 
 ## Status
 
-Used to build a real portfolio site (a spiral-ascent 3D tower embedded in a
-Next.js/React app with bilingual copy). `references/production-lessons.md` captures
-what that build surfaced that the original design didn't anticipate — expect this file
-to keep growing as the skill gets used on more builds.
+- **The skill itself** (`SKILL.md` + `references/`) is stable and has two kinds of
+  evidence behind it: one real production build (the live portfolio linked above,
+  hand-integrated into a bilingual Next.js/React app) and a 4-example gallery in
+  `examples/` spanning nature, architecture, SaaS, and product-launch archetypes —
+  built to demonstrate the skill generalizes past that one production build.
+- **`references/scrub-engine.js`** has had four real defects found and fixed, all by
+  actually running builds through Playwright rather than eyeballing one scroll
+  position — see `references/production-lessons.md` for what broke and why. The most
+  recent was a WCAG contrast bug in the copy overlay and CTA button (hardcoded text
+  color against an arbitrary scene background); every build made with the current
+  engine file gets that fix for free.
+- **`references/production-lessons.md`** is the running list of what production use
+  surfaces that the original design didn't anticipate, and grows with each new build.
+- **Not yet done:** the gallery examples exist as source + preview screenshots but
+  aren't deployed anywhere live (unlike the portfolio build) — viewing them requires
+  cloning the repo and running `scripts/serve.mjs` locally.
 
 ## License
 

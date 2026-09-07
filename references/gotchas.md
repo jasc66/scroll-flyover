@@ -128,6 +128,13 @@ photos → interaction → reproducibility → host-page integration).
   validated for flat unlit HTML. Keep a separate, WCAG-checked variant for any HTML
   reuse of a 3D palette color rather than sharing the hex — see
   `references/production-lessons.md`.
+- **Copy overlay text is unreadable against a light scene, or a CTA button's text
+  nearly disappears into its background** → this was a real engine bug (bug 4 in
+  `references/production-lessons.md`), fixed in the shipped `scrub-engine.js`: the copy
+  panel now sits on a solid scrim instead of bare white text, and the CTA button picks
+  black or white text via WCAG relative luminance instead of a fixed color. If a build
+  still shows this, it's using an older copy of the engine — re-copy
+  `references/scrub-engine.js`, don't patch it in host-page CSS.
 - **Two scenes' copy panels are both visible at once, stacked and unreadable** → the
   dwell-window half-width in `updateCopyVisibility` must be `<= 0.5 * (1 / scene
   count)` or adjacent windows mathematically overlap regardless of scene count. The
