@@ -74,8 +74,27 @@ export function mountScrollFlyover(container, config) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // `container` itself must stay the TALL, non-sticky element — currentScrollT()
+  // below reads real scroll progress from ITS getBoundingClientRect().top, which
+  // only decreases as the page scrolls if container is a normal-flow element.
+  // The visual pin effect needs a SEPARATE, SHORTER, `position: sticky` wrapper:
+  // a sticky element only has "room" to stick while its own containing block is
+  // taller than it is (see references/production-lessons.md) — making `container`
+  // itself sticky would freeze its own rect.top at 0 and break scroll tracking,
+  // while making the canvas position:absolute directly inside the tall (non-
+  // sticky) `container` leaves it scrolling away with the rest of the page
+  // instead of staying pinned. This wrapper is what production-lessons.md calls
+  // "the visually-sticky canvas wrapper" — everything visual (canvas, copy
+  // overlay) mounts inside it; `container` keeps only this wrapper plus the
+  // scroll-length spacer and the crawlable SEO block, both added further below.
   container.style.position = container.style.position || 'relative';
-  container.appendChild(renderer.domElement);
+  const pinWrapper = document.createElement('div');
+  pinWrapper.className = 'sf-pin';
+  Object.assign(pinWrapper.style, {
+    position: 'sticky', top: '0', height: '100vh', overflow: 'hidden', display: 'block',
+  });
+  container.appendChild(pinWrapper);
+  pinWrapper.appendChild(renderer.domElement);
   Object.assign(renderer.domElement.style, { position: 'absolute', inset: '0', display: 'block' });
 
   const scene = new THREE.Scene();
@@ -173,7 +192,7 @@ export function mountScrollFlyover(container, config) {
   const overlay = document.createElement('div');
   overlay.className = 'sf-overlay';
   Object.assign(overlay.style, { position: 'absolute', inset: '0', pointerEvents: 'none', overflow: 'hidden' });
-  container.appendChild(overlay);
+  pinWrapper.appendChild(overlay); // must live in the sticky wrapper, not container — see above
 
   const sectionEls = scenes.map((sceneCfg) => {
     const el = document.createElement('div');
@@ -267,7 +286,17 @@ export function mountScrollFlyover(container, config) {
 
   let rafId = null;
   let disposed = false;
+  // `running` is DERIVED from two independent pause reasons, never set directly —
+  // see references/gotchas.md "Host-page integration": folding multiple reasons
+  // into one flag means whichever handler fires last "wins," and a context-loss
+  // event with no matching restore handler freezes the flight permanently even
+  // after the browser recovers the context (confirmed happening with this exact
+  // shape of bug during development — swiftshader/software-rendered contexts in
+  // particular can drop and restore under load).
   let running = true;
+  let isOnScreen = true;
+  let contextLost = false;
+  function updateRunning() { running = isOnScreen && !contextLost; }
 
   function currentScrollT() {
     const rect = container.getBoundingClientRect();
@@ -279,9 +308,16 @@ export function mountScrollFlyover(container, config) {
 
   function updateCopyVisibility(t) {
     const dwellCenters = scenes.map((_, i) => (i + 0.5) / scenes.length);
+    // Window half-width MUST be <= 0.5 * (spacing between centers) = 0.5/scenes.length,
+    // or adjacent scenes' windows mathematically overlap and both show at opacity:1
+    // simultaneously — two headlines stacked unreadably on top of each other at every
+    // transition, in every build (found while testing example builds; confirmed the
+    // previous 1.4 multiplier guarantees overlap for any scene count, since the
+    // windows only avoid touching when multiplier <= 1). 0.9 keeps a small gap.
+    const halfWidth = (0.5 / scenes.length) * 0.9;
     sectionEls.forEach((el, i) => {
       const dist = Math.abs(t - dwellCenters[i]);
-      el.style.opacity = dist < (0.5 / scenes.length) * 1.4 ? '1' : '0';
+      el.style.opacity = dist < halfWidth ? '1' : '0';
     });
   }
 
@@ -315,15 +351,25 @@ export function mountScrollFlyover(container, config) {
   // Pause the render loop when off-screen — a live scene keeps costing GPU
   // even when unseen, unlike a paused video.
   const io = new IntersectionObserver((entries) => {
-    running = entries[0]?.isIntersecting ?? true;
+    isOnScreen = entries[0]?.isIntersecting ?? true;
+    updateRunning();
   }, { threshold: 0 });
   io.observe(container);
 
   window.addEventListener('resize', resize);
   renderer.domElement.addEventListener('webglcontextlost', (e) => {
     e.preventDefault();
-    running = false;
+    contextLost = true;
+    updateRunning();
     renderStaticFallback(container, palette, scenes, /*keepExisting*/ true);
+  });
+  // Without this, a context that the browser successfully restores (Chromium logs
+  // "Context Restored" — this is normal recovery, not a fatal error) leaves the
+  // flight frozen forever, stuck showing the static fallback card.
+  renderer.domElement.addEventListener('webglcontextrestored', () => {
+    contextLost = false;
+    updateRunning();
+    container.querySelector('[data-sf-fallback]')?.remove();
   });
 
   resize();
@@ -445,6 +491,7 @@ function makeGradientTexture(colorTop, colorBottom, size = 512) {
 function renderStaticFallback(container, palette, scenes, keepExisting = false) {
   if (!keepExisting) container.innerHTML = '';
   const fallback = document.createElement('div');
+  fallback.setAttribute('data-sf-fallback', ''); // lets webglcontextrestored remove just this
   Object.assign(fallback.style, {
     minHeight: '60vh', display: 'flex', flexDirection: 'column', justifyContent: 'center',
     alignItems: 'center', textAlign: 'center', padding: '2rem',

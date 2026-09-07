@@ -490,7 +490,8 @@ category (each links to the matching section there):
 - **User photos** — washed-out color, stretched/cropped aspect, mobile framerate hit,
   blank scene on a bad photo path.
 - **Interaction and overlay** — unreachable route-rail dots, clicks hitting the wrong
-  panel, reversed look-at offsets, 3D color failing HTML contrast.
+  panel, reversed look-at offsets, 3D color failing HTML contrast, two scenes' copy
+  panels visible at once.
 - **Reproducibility and QA** — page differs on every reload, a headless screenshot
   check passing trivially against a fallback card instead of the real scene.
 - **Host-page integration** — black screen past the first scene (`overflow-x` +

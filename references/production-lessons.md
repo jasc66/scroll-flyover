@@ -7,6 +7,51 @@ reference files describe the happy path; this one is the list of ways the happy 
 breaks in a real host page. Read it **before** debugging a stuck/black/jerky build —
 check this list before re-deriving the camera math from scratch.
 
+## Three engine bugs found and fixed while building the example gallery
+
+`references/scrub-engine.js` and `references/index-template.html` had three real
+defects, not host-page integration mistakes — found by actually running four fresh
+example builds through Playwright (not just eyeballing one scroll position) and
+confirmed with positive/negative controls before and after each fix:
+
+1. **The pin effect never worked out of the box.** `mountScrollFlyover` appended the
+   canvas directly into the CALLER's `container` with `position: absolute`, and relied
+   on the host page making `container` itself `position: sticky`. That can't work: a
+   sticky element only has "room" to stick while its own containing block is TALLER
+   than it is (see the CSS trap below), and `container` is deliberately set to the
+   full scroll length — exactly as tall as its containing block ends up being, since
+   nothing sizes that containing block independently. Confirmed with an isolated
+   minimal-HTML repro (no Three.js involved) before touching the engine: a single
+   `position: sticky` div sized to the page's full scroll length never sticks; only a
+   shorter `position: sticky; height: 100vh` div *inside* a taller plain spacer does.
+   **Fix:** the engine now creates its own inner `.sf-pin` wrapper
+   (`position: sticky; top: 0; height: 100vh; overflow: hidden`) and mounts the canvas
+   and copy overlay into *that*, not into `container` directly. `container` stays the
+   tall, non-sticky element `currentScrollT()` needs for its own `rect.top` math.
+   Nothing about the public `mountScrollFlyover(container, config)` call changes — this
+   was purely an internal engine bug, not a caller/host-page mistake.
+2. **A lost WebGL context froze the flight forever, even after the browser recovered
+   it.** The engine's `webglcontextlost` handler set `running = false` and showed the
+   static fallback, but there was no matching `webglcontextrestored` handler to clear
+   it — exactly the single-shared-flag bug this same file's "running flag" section
+   already warns against, except the shipped engine had the bug it warns about.
+   Reproduced under `--use-gl=swiftshader` (context loss is more common there, but not
+   swiftshader-exclusive — real GPU driver resets hit the same path). **Fix:** `running`
+   is now derived every time from two independent flags (`isOnScreen`, `contextLost`)
+   via `updateRunning()`, and a `webglcontextrestored` listener clears `contextLost`
+   and removes the fallback card (now tagged `data-sf-fallback` so it can be targeted).
+3. **Adjacent scenes' copy panels could both be visible at once.** `updateCopyVisibility`
+   used a dwell-window half-width of `(0.5/N) * 1.4`. For any scene count, two windows
+   only avoid overlapping when the multiplier is `<= 1` — 1.4 guarantees overlap on
+   every single transition, showing two stacked, unreadable headlines. Confirmed by
+   scanning the full scroll range at 2% steps and counting simultaneously-visible
+   panels (>1 at many points) before the fix, zero after. **Fix:** multiplier changed
+   to `0.9`.
+
+If a build made with an OLDER copy of `scrub-engine.js` shows any of these three
+symptoms, the fix is to re-copy the current `references/scrub-engine.js`, not to patch
+around it in host-page code.
+
 ## Architecture: when NOT to use scrub-engine.js as-is
 
 `references/scrub-engine.js` bakes each scene's copy into the DOM it creates

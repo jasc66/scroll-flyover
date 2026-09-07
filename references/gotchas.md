@@ -128,6 +128,11 @@ photos → interaction → reproducibility → host-page integration).
   validated for flat unlit HTML. Keep a separate, WCAG-checked variant for any HTML
   reuse of a 3D palette color rather than sharing the hex — see
   `references/production-lessons.md`.
+- **Two scenes' copy panels are both visible at once, stacked and unreadable** → the
+  dwell-window half-width in `updateCopyVisibility` must be `<= 0.5 * (1 / scene
+  count)` or adjacent windows mathematically overlap regardless of scene count. The
+  shipped engine uses a safe multiplier; if this shows up anyway, something local
+  raised it. See `references/production-lessons.md`.
 
 ## Reproducibility and QA
 
@@ -144,14 +149,18 @@ photos → interaction → reproducibility → host-page integration).
 
 - **Everything past the first scene renders black, no console error** → almost always
   `overflow-x: hidden` on `<body>` or an ancestor breaking `position: sticky` on the
-  canvas wrapper — use `overflow-x: clip` instead. See
-  `references/production-lessons.md` before suspecting the curve or the renderer.
+  engine's internal `.sf-pin` wrapper — use `overflow-x: clip` instead. See
+  `references/production-lessons.md` before suspecting the curve or the renderer. (The
+  engine creates its own sticky pin wrapper internally as of this file's current
+  version — if a build shows this symptom on scroll position 0 already, with no host
+  CSS involved, confirm `scrub-engine.js` isn't an old copy missing that wrapper.)
 - **The flight freezes permanently after switching tabs (or any UI interaction), but
   scroll still works** → a single shared `running` boolean is being set by more than
   one handler (tab visibility, `IntersectionObserver`, context loss) and one of them
-  never sets it back to `true`. Use one flag per pause reason and derive `running` from
-  all of them. Also confirm the `IntersectionObserver` watches the scroll host, not the
-  sticky-positioned canvas itself — see `references/production-lessons.md`.
+  never sets it back to `true`. The shipped engine derives `running` from separate
+  flags with a `webglcontextrestored` handler already wired up — this bullet is for
+  anyone adding a NEW pause reason (e.g. tab-visibility) without following the same
+  pattern. See `references/production-lessons.md`.
 - **Adapting this engine into a project that needs i18n/localized copy** → don't adapt
   `scrub-engine.js`'s DOM-baked copy directly; reimplement the mount function in the
   host's own language so copy renders through its component/i18n system, and keep only

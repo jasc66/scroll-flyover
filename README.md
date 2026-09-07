@@ -30,6 +30,25 @@ Six sections, one continuous camera flight, no cuts:
 (host-page CSS traps, pause-state bugs, look-at sign errors) that the original design
 didn't anticipate.
 
+## Gallery: four more builds, four archetypes
+
+Generated with this skill to demonstrate it isn't tuned to one subject or one camera
+archetype — each uses a different journey structure and shape language from
+`references/camera-archetypes.md` / `references/scene-recipes.md`. Full runnable source
+for each is in `examples/`.
+
+|     |     |     |
+| --- | --- | --- |
+| ![Alta Finca — nature, island hop](examples/nature-coffee-farm/preview.png) | ![Marco Estudio — architecture, corridor](examples/architecture-studio/preview-1.png) | ![Marco Estudio — architecture, corridor](examples/architecture-studio/preview-2.png) |
+| **Alta Finca** — coffee farm · low-poly organic · island hop | **Marco Estudio** — architecture studio · geometric · corridor/tunnel | |
+| ![Nexo Ops — SaaS, vertical descent](examples/saas-nexo-ops/preview-1.png) | ![Nexo Ops — SaaS, vertical descent](examples/saas-nexo-ops/preview-2.png) | ![Ala Sneaker — product, orbit showcase](examples/product-ala-sneaker/preview.png) |
+| **Nexo Ops** — project-mgmt SaaS · geometric · vertical descent | | **Ala Sneaker** — product launch · toy/rounded · orbit showcase |
+
+Building these surfaced three real bugs in `references/scrub-engine.js` itself (the
+scroll-pin effect didn't work out of the box, a lost WebGL context froze the flight
+permanently, adjacent scenes' copy could overlap) — all fixed; see
+`references/production-lessons.md` for what broke and why.
+
 ## Install
 
 Drop this repo's contents into your Claude Code skills directory:

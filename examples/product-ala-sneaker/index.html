@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Ala Sneaker — scroll-flyover example (product / orbit showcase)</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #1a1024; }
+    #world { width: 100%; }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.169.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <div id="world"></div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { mountScrollFlyover } from '../../references/scrub-engine.js';
+    import { buildBlob, addRimGlow, layoutOrbit } from '../_shared/recipes.js';
+
+    // Subject: Ala Sneaker, a single-product launch — orbit showcase is the direct
+    // fit per camera-archetypes.md's table ("A single product -> Orbit showcase").
+    // NOTE on a real engine limitation found while building this: camera-archetypes.md
+    // §5 says to "override sceneControlPoints so the dive point aims inward at the
+    // hero" — but references/scrub-engine.js's sceneControlPoints is a private,
+    // non-exported function; there is no config hook to override it. Rather than
+    // fork the engine for a demo, this build sidesteps it: the anchors are computed
+    // ONCE up front (below) and closured into every scene builder, so each scene can
+    // place a copy of the SAME hero shoe at the negated anchor position — it lands
+    // at the world origin every time, reading as one persistent object the camera
+    // orbits around, regardless of which anchor's approach/dive/depart points the
+    // engine's default (outward-facing) logic computes.
+    const ACCENT = '#ff5da2';
+    const SCENE_COUNT = 4;
+    // Radius tuned against the engine's fixed SCENE_RADIUS=6 (references/scrub-
+    // engine.js) — the camera flies roughly 6-11 units from each anchor, so an
+    // orbit radius much larger than that (an earlier draft used 15) puts the
+    // hero, sitting at the negated anchor near world origin, too far from the
+    // camera to read as a product close-up; a hero scaled up further compensates.
+    const orbitAnchors = layoutOrbit(9, 2)(SCENE_COUNT);
+    const HERO_SCALE = 2.4;
+
+    // Deliberate uniqueness: the one real detail past "a sneaker" is a hand-finished
+    // metal aglet on the laces — every scene shows one oversized aglet prop; only
+    // the final reveal scene's aglet gets the build's one Fresnel rim-glow prop
+    // (materials.md §4 budget: one prop only).
+    function buildHeroShoe(materials, rng, { rimGlowAglet = false } = {}) {
+      const g = new THREE.Group();
+      const sole = buildBlob(1.8, materials[1]);
+      sole.scale.set(1.4, 0.35, 0.7);
+      g.add(sole);
+      const upper = buildBlob(1.3, materials[0]);
+      upper.position.set(-0.1, 0.55, 0);
+      upper.scale.set(1.1, 0.85, 0.75);
+      g.add(upper);
+      for (let i = 0; i < 4; i++) {
+        const lace = buildBlob(0.14, materials[2]);
+        lace.position.set(-0.6 + i * 0.35, 0.95 + i * 0.03, 0.35);
+        g.add(lace);
+      }
+      const aglet = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.5, 10), materials[3]);
+      aglet.rotation.z = Math.PI / 2.2;
+      aglet.position.set(-0.75, 1.05, 0.4);
+      g.add(aglet);
+      if (rimGlowAglet) addRimGlow(aglet, ACCENT);
+      return g;
+    }
+
+    function buildViewpointMarker(materials) {
+      return new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.03, 6, 32), materials[2]);
+    }
+
+    function makeSceneBuilder(index, { rimGlowAglet = false } = {}) {
+      return (materials, textures, { rng }) => {
+        const g = new THREE.Group();
+        const hero = buildHeroShoe(materials, rng, { rimGlowAglet });
+        hero.scale.setScalar(HERO_SCALE);
+        hero.position.copy(orbitAnchors[index].clone().negate());
+        hero.rotation.y = (index / SCENE_COUNT) * Math.PI * 0.6;
+        g.add(hero);
+        const marker = buildViewpointMarker(materials);
+        marker.rotation.x = Math.PI / 2;
+        g.add(marker);
+        return g;
+      };
+    }
+
+    mountScrollFlyover(document.getElementById('world'), {
+      palette: { colors: ['#f4f1ea', '#2b2b33', '#c9c2b3', ACCENT], accent: ACCENT },
+      shapeLanguage: 'toy',
+      cameraFeel: 'swoop',
+      performance: 'rich',
+      seed: 8801,
+      layout: () => orbitAnchors,
+      scenes: [
+        { build: makeSceneBuilder(0), eyebrow: 'Ala Sneaker', title: 'Una silueta que se reconoce de lejos.', body: 'El perfil curvo no es decoración — es la firma de la marca.', tags: ['Silueta'] },
+        { build: makeSceneBuilder(1), eyebrow: 'Suela', title: 'Agarre pensado para la ciudad.', body: 'Tacos direccionales moldeados en un solo bloque de goma reciclada.', tags: ['Suela'] },
+        { build: makeSceneBuilder(2), eyebrow: 'Detalle', title: 'El herraje se hace a mano.', body: 'Cada aglet se pule por separado — no sale de una troqueladora.', tags: ['Hecho a mano'], cta: 'Ver detalle' },
+        { build: makeSceneBuilder(3, { rimGlowAglet: true }), eyebrow: 'Lanzamiento', title: 'Disponible desde hoy.', body: 'Edición inicial limitada, numerada, con caja de colección.', tags: ['Edición limitada'], cta: 'Comprar ahora' },
+      ],
+    });
+  </script>
+</body>
+</html>
