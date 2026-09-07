@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Scroll Flyover</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #111; }
+    #world { width: 100%; }
+  </style>
+  <!--
+    Three.js is MIT-licensed and free — no API key, no billing, no account.
+    unpkg serves the published npm package directly. Swap this import map for
+    a locally vendored copy (npm install three) for a fully offline build.
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.169.0/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="world"></div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { mountScrollFlyover } from './scrub-engine.js';
+
+    // --- Example scene builders (see references/scene-recipes.md for more) ---
+    function buildIslandBase(radius, height, material) {
+      const geo = new THREE.CylinderGeometry(radius, radius * 1.08, height, 7, 1);
+      return new THREE.Mesh(geo, material);
+    }
+    function buildRock(radius, material) {
+      return new THREE.Mesh(new THREE.IcosahedronGeometry(radius, 0), material);
+    }
+
+    function buildSceneA(materials) {
+      const g = new THREE.Group();
+      g.add(buildIslandBase(6, 1.2, materials[0]));
+      for (let i = 0; i < 5; i++) {
+        const rock = buildRock(0.6 + Math.random() * 0.6, materials[1]);
+        rock.position.set((Math.random() - 0.5) * 8, 0.8, (Math.random() - 0.5) * 8);
+        g.add(rock);
+      }
+      return g;
+    }
+    function buildSceneB(materials) {
+      const g = new THREE.Group();
+      g.add(buildIslandBase(6, 1.2, materials[2]));
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(2, 4, 2), materials[3] || materials[0]);
+      tower.position.y = 2;
+      g.add(tower);
+      return g;
+    }
+
+    mountScrollFlyover(document.getElementById('world'), {
+      palette: {
+        colors: ['#2b6777', '#52ab98', '#c8d8e4', '#f2f2f2'],
+        accent: '#e8a33d',
+      },
+      shapeLanguage: 'lowpoly',   // 'lowpoly' | 'geometric' | 'toy'
+      cameraFeel: 'swoop',        // 'swoop' | 'glide'
+      performance: 'rich',        // 'rich' | 'light'
+      scenes: [
+        {
+          build: buildSceneA,
+          eyebrow: 'Capítulo uno',
+          title: 'Todo empieza aquí.',
+          body: 'Reemplaza esto con la copia real de tu primera escena.',
+          tags: ['Ejemplo'],
+        },
+        {
+          build: buildSceneB,
+          eyebrow: 'Capítulo dos',
+          title: 'Y continúa aquí.',
+          body: 'Cada escena es una función que arma un THREE.Group.',
+          tags: ['Ejemplo'],
+          cta: 'Empezar',
+        },
+      ],
+    });
+  </script>
+</body>
+</html>
