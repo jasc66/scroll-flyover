@@ -1,6 +1,6 @@
 {
   "name": "scroll-flyover",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Claude Code skill: build cinematic, scroll-driven Three.js/WebGL fly-through landing pages — no AI image/video generation, zero per-build cost.",
   "bin": {
     "scroll-flyover": "bin/install.js"

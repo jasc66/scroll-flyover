@@ -45,12 +45,12 @@ by hand-copying files.
 
 [**Try all four live →**](https://scroll-flyover-demo.vercel.app)
 
-|     |     |     |
-| --- | --- | --- |
-| ![Alta Finca — nature, island hop](examples/nature-coffee-farm/preview.png) | ![Marco Estudio — architecture, corridor](examples/architecture-studio/preview-1.png) | ![Marco Estudio — architecture, corridor](examples/architecture-studio/preview-2.png) |
-| **[Alta Finca](https://scroll-flyover-demo.vercel.app/examples/nature-coffee-farm/)** — coffee farm · low-poly organic · island hop | **[Marco Estudio](https://scroll-flyover-demo.vercel.app/examples/architecture-studio/)** — architecture studio · geometric · corridor/tunnel | |
-| ![Nexo Ops — SaaS, vertical descent](examples/saas-nexo-ops/preview-1.png) | ![Nexo Ops — SaaS, vertical descent](examples/saas-nexo-ops/preview-2.png) | ![Ala Sneaker — product, orbit showcase](examples/product-ala-sneaker/preview.png) |
-| **[Nexo Ops](https://scroll-flyover-demo.vercel.app/examples/saas-nexo-ops/)** — project-mgmt SaaS · geometric · vertical descent | | **[Ala Sneaker](https://scroll-flyover-demo.vercel.app/examples/product-ala-sneaker/)** — product launch · toy/rounded · orbit showcase |
+|     |     |
+| --- | --- |
+| ![Alta Finca — nature, island hop](examples/nature-coffee-farm/preview.png) | ![Marco Estudio — architecture, corridor](examples/architecture-studio/preview-1.png) |
+| **[Alta Finca](https://scroll-flyover-demo.vercel.app/examples/nature-coffee-farm/)** — coffee farm · low-poly organic · island hop | **[Marco Estudio](https://scroll-flyover-demo.vercel.app/examples/architecture-studio/)** — architecture studio · geometric · corridor/tunnel |
+| ![Nexo Ops — SaaS, vertical descent](examples/saas-nexo-ops/preview-1.png) | ![Ala Sneaker — product, orbit showcase](examples/product-ala-sneaker/preview.png) |
+| **[Nexo Ops](https://scroll-flyover-demo.vercel.app/examples/saas-nexo-ops/)** — project-mgmt SaaS · geometric · vertical descent | **[Ala Sneaker](https://scroll-flyover-demo.vercel.app/examples/product-ala-sneaker/)** — product launch · toy/rounded · orbit showcase |
 
 Building these surfaced four real bugs in `references/scrub-engine.js` itself (the
 scroll-pin effect didn't work out of the box, a lost WebGL context froze the flight
