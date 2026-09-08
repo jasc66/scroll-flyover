@@ -30,12 +30,5 @@
   "license": "MIT",
   "engines": {
     "node": ">=16.7.0"
-  },
-  "scripts": {
-    "qa": "node scripts/run-qa.mjs"
-  },
-  "devDependencies": {
-    "playwright": "1.63.0",
-    "pngjs": "7.0.0"
   }
 }

@@ -1,7 +1,6 @@
 # Procedural 3D Scroll Experiences
 
 [![npm downloads](https://img.shields.io/npm/dt/scroll-flyover.svg)](https://www.npmjs.com/package/scroll-flyover)
-[![QA](https://github.com/jasc66/scroll-flyover/actions/workflows/qa.yml/badge.svg)](https://github.com/jasc66/scroll-flyover/actions/workflows/qa.yml)
 
 A [Claude Code](https://claude.com/claude-code) skill for building cinematic,
 scroll-driven Three.js worlds.
@@ -37,8 +36,12 @@ didn't anticipate.
 
 Generated with this skill to demonstrate it isn't tuned to one subject or one camera
 archetype — each uses a different journey structure and shape language from
-`references/camera-archetypes.md` / `references/scene-recipes.md`. Full runnable source
-for each is in `examples/`.
+`references/camera-archetypes.md` / `references/scene-recipes.md`. Full runnable source,
+a local dev server, and the automated reproducibility/WCAG-contrast QA suite for these
+four live in the separate [jasc66/scroll-flyover-demo](https://github.com/jasc66/scroll-flyover-demo)
+repo, which depends on this skill's npm package rather than vendoring a copy of the
+engine — an engine fix here reaches that gallery by bumping its dependency version, not
+by hand-copying files.
 
 [**Try all four live →**](https://scroll-flyover-demo.vercel.app)
 
@@ -54,16 +57,6 @@ scroll-pin effect didn't work out of the box, a lost WebGL context froze the fli
 permanently, adjacent scenes' copy could overlap, copy text could fail WCAG contrast
 against its own scene) — all fixed; see `references/production-lessons.md` for what
 broke and why.
-
-To run an example's source locally instead of the live version: each `index.html` loads
-its scripts as ES modules (`type="module"`), which browsers block from a `file://`
-origin with a CORS error. Serve the repo over HTTP to view them: `node scripts/serve.mjs`
-from the repo root, then open `http://localhost:8080/examples/<name>/index.html`. Common
-alternatives break this in non-obvious ways — Python's `http.server` can serve `.js` as
-`text/plain` depending on the OS's MIME registry, and `npx serve` / `npx http-server`
-redirect `index.html` URLs to an extensionless path, which silently breaks the examples'
-relative `import` paths — so `scripts/serve.mjs` is a small dependency-free server that
-does neither.
 
 ## Install
 
@@ -117,10 +110,8 @@ from.
   its mount function instead of adapting it as-is (e.g. a host app with its own i18n).
 - `references/index-template.html` — a minimal standalone page that mounts the engine
   via a free Three.js CDN import map.
-- `scripts/serve.mjs` — a dependency-free static file server for viewing `examples/`
-  locally (`node scripts/serve.mjs`); see the gallery section above for why a plain
-  `file://` open or common alternatives (`python -m http.server`, `npx serve`) don't
-  work for these builds.
+- `references/qa-reproducibility.mjs` — automates the SKILL.md Step 8
+  reload-reproducibility check (Playwright).
 
 ## Accessibility QA
 
@@ -131,15 +122,11 @@ route-rail buttons, the crawlable SEO block, and the `prefers-reduced-motion` fa
 all are. Findings are treated as QA failures to fix before calling a build done, not
 deferred. This requires the `Agent` tool, listed in `SKILL.md`'s `allowed-tools`.
 
-That step is for a build you're making with this skill. This repo's own example
-gallery is additionally covered by an automated regression check — `npm run qa`
-(also run in CI on every push/PR, see the QA badge above) starts a local server and,
-for each runnable example, runs `references/qa-reproducibility.mjs` (the SKILL.md Step
-8 reload-reproducibility check, automated) and `scripts/qa-accessibility.mjs` (renders
-the real WebGL scene, then screenshots it with every overlay text element's color
-hidden vs. visible to measure actual rendered WCAG contrast — the same class of bug
-fixed in the WCAG contrast fix above). Requires `npm install` and
-`npx playwright install chromium` first.
+That step is for a build you're making with this skill. The example gallery in
+[jasc66/scroll-flyover-demo](https://github.com/jasc66/scroll-flyover-demo) is
+additionally covered by an automated regression check (`npm run qa` there, also run in
+CI on every push/PR) that renders each example's real WebGL scene and measures actual
+rendered WCAG contrast — the same class of bug fixed in the WCAG contrast fix above.
 
 ## Deliberate uniqueness
 
@@ -155,9 +142,11 @@ applied during the interview and scene-building steps, not a separate pipeline s
 
 - **The skill itself** (`SKILL.md` + `references/`) is stable and has two kinds of
   evidence behind it: one real production build (the live portfolio linked above,
-  hand-integrated into a bilingual Next.js/React app) and a 4-example gallery in
-  `examples/` spanning nature, architecture, SaaS, and product-launch archetypes —
-  built to demonstrate the skill generalizes past that one production build.
+  hand-integrated into a bilingual Next.js/React app) and a 4-example gallery spanning
+  nature, architecture, SaaS, and product-launch archetypes — built to demonstrate the
+  skill generalizes past that one production build. This repo keeps only the gallery's
+  preview screenshots (`examples/`); the runnable source lives in
+  [jasc66/scroll-flyover-demo](https://github.com/jasc66/scroll-flyover-demo).
 - **`references/scrub-engine.js`** has had four real defects found and fixed, all by
   actually running builds through Playwright rather than eyeballing one scroll
   position — see `references/production-lessons.md` for what broke and why. The most
@@ -167,12 +156,13 @@ applied during the interview and scene-building steps, not a separate pipeline s
 - **`references/production-lessons.md`** is the running list of what production use
   surfaces that the original design didn't anticipate, and grows with each new build.
 - **All four gallery examples are deployed live** at
-  [scroll-flyover-demo.vercel.app](https://scroll-flyover-demo.vercel.app) (source in
-  [jasc66/scroll-flyover-demo](https://github.com/jasc66/scroll-flyover-demo)) — no
-  clone/build step needed to see them.
-- **CI runs the reproducibility and WCAG-contrast checks on every push/PR** (see
-  Accessibility QA above), so the next regression of either kind fails automatically
-  instead of waiting for someone to notice by eye.
+  [scroll-flyover-demo.vercel.app](https://scroll-flyover-demo.vercel.app) — no
+  clone/build step needed to see them. That repo depends on this skill's npm package
+  (rather than vendoring a copy of the engine) and runs the reproducibility and
+  WCAG-contrast checks in CI on every push/PR, so an engine regression of either kind
+  fails automatically instead of waiting for someone to notice by eye — but only once
+  the demo repo's pinned version is bumped and re-synced; it does not update itself
+  automatically when this repo changes.
 
 ## License
 
