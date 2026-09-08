@@ -1,6 +1,7 @@
 # Procedural 3D Scroll Experiences
 
 [![npm downloads](https://img.shields.io/npm/dt/scroll-flyover.svg)](https://www.npmjs.com/package/scroll-flyover)
+[![QA](https://github.com/jasc66/scroll-flyover/actions/workflows/qa.yml/badge.svg)](https://github.com/jasc66/scroll-flyover/actions/workflows/qa.yml)
 
 A [Claude Code](https://claude.com/claude-code) skill for building cinematic,
 scroll-driven Three.js worlds.
@@ -130,6 +131,16 @@ route-rail buttons, the crawlable SEO block, and the `prefers-reduced-motion` fa
 all are. Findings are treated as QA failures to fix before calling a build done, not
 deferred. This requires the `Agent` tool, listed in `SKILL.md`'s `allowed-tools`.
 
+That step is for a build you're making with this skill. This repo's own example
+gallery is additionally covered by an automated regression check — `npm run qa`
+(also run in CI on every push/PR, see the QA badge above) starts a local server and,
+for each runnable example, runs `references/qa-reproducibility.mjs` (the SKILL.md Step
+8 reload-reproducibility check, automated) and `scripts/qa-accessibility.mjs` (renders
+the real WebGL scene, then screenshots it with every overlay text element's color
+hidden vs. visible to measure actual rendered WCAG contrast — the same class of bug
+fixed in the WCAG contrast fix above). Requires `npm install` and
+`npx playwright install chromium` first.
+
 ## Deliberate uniqueness
 
 The single biggest risk with a skill like this isn't a usability bug — it's every
@@ -159,6 +170,9 @@ applied during the interview and scene-building steps, not a separate pipeline s
   [scroll-flyover-demo.vercel.app](https://scroll-flyover-demo.vercel.app) (source in
   [jasc66/scroll-flyover-demo](https://github.com/jasc66/scroll-flyover-demo)) — no
   clone/build step needed to see them.
+- **CI runs the reproducibility and WCAG-contrast checks on every push/PR** (see
+  Accessibility QA above), so the next regression of either kind fails automatically
+  instead of waiting for someone to notice by eye.
 
 ## License
 
