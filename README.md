@@ -131,6 +131,28 @@ handle.dispose(); // on SPA route change / unmount
 - The engine's own UI strings (the route rail's `aria-label`s) default to English.
   Override them to match the host page's language:
   ``labels: { goToScene: (i, total) => `Ir a la escena ${i} de ${total}` }``
+- **Theming (opt-in, since 1.2.0):** the copy overlay's colors, blur, and radii are
+  inline styles whose *values* are `var(--sf-x, <default>)`, not literals — set any of
+  these as a CSS custom property on `container` (or an ancestor, they inherit like
+  `color`) to retheme without touching the engine file. Untouched, every default
+  reproduces the original hardcoded look exactly.
+
+  | Custom property | Default | Affects |
+  | --- | --- | --- |
+  | `--sf-overlay-bg` | `rgba(10,10,16,0.62)` | copy panel background scrim |
+  | `--sf-overlay-blur` | `6px` | copy panel backdrop blur |
+  | `--sf-overlay-radius` | `12px` | copy panel corner radius |
+  | `--sf-overlay-padding` | `1.1em 1.3em` | copy panel padding |
+  | `--sf-text-color` | `#fff` | copy panel text color |
+  | `--sf-tag-border` | `rgba(255,255,255,0.5)` | tag pill border |
+  | `--sf-cta-bg` | the scene's palette accent | CTA button background |
+  | `--sf-cta-text-color` | computed for contrast against the accent | CTA button text |
+  | `--sf-cta-radius` | `8px` | CTA button corner radius |
+  | `--sf-rail-dot` | `rgba(255,255,255,0.35)` | route rail dot (inactive) |
+  | `--sf-rail-dot-active` | `#fff` | route rail dot (active) |
+
+  `--sf-cta-bg`/`--sf-cta-text-color` override the WCAG-checked defaults (see
+  "Status" below) — if you set them, you're responsible for the contrast between them.
 
 ## What's in here
 

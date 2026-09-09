@@ -66,6 +66,36 @@ const DEFAULT_LABELS = {
 };
 
 /**
+ * Theming (opt-in, additive since 1.2.0): every color/blur/radius the overlay paints
+ * is still a plain inline style, but the VALUE is `var(--sf-x, <default>)` instead of
+ * a literal. A custom property set anywhere on `container` or an ancestor cascades down
+ * to it exactly like `color` would — inline styles consult the cascade for the variable
+ * even though the property itself can't be overridden from outside. Until a consumer
+ * sets one of these, every default below reproduces the pre-1.2.0 hardcoded look
+ * exactly, so this is non-breaking.
+ */
+const THEME_VARS = {
+  overlayBg: ['--sf-overlay-bg', 'rgba(10,10,16,0.62)'],
+  overlayBlur: ['--sf-overlay-blur', '6px'],
+  overlayRadius: ['--sf-overlay-radius', '12px'],
+  overlayPadding: ['--sf-overlay-padding', '1.1em 1.3em'],
+  textColor: ['--sf-text-color', '#fff'],
+  tagBorder: ['--sf-tag-border', 'rgba(255,255,255,0.5)'],
+  ctaBg: ['--sf-cta-bg', '#e8a33d'],
+  ctaTextColor: ['--sf-cta-text-color', '#fff'],
+  ctaRadius: ['--sf-cta-radius', '8px'],
+  railDot: ['--sf-rail-dot', 'rgba(255,255,255,0.35)'],
+  railDotActive: ['--sf-rail-dot-active', '#fff'],
+};
+// `fallback` overrides the static default above — used where the real default is
+// derived per-build (the CTA's palette accent / computed readable text color) rather
+// than a fixed constant.
+function cssVar(key, fallback) {
+  const [name, defaultValue] = THEME_VARS[key];
+  return `var(${name}, ${fallback ?? defaultValue})`;
+}
+
+/**
  * Deterministic RNG (mulberry32). Scene builders MUST use this instead of
  * Math.random(): with Math.random() a brand's page renders differently on every
  * reload and on every visitor's screen, which is wrong for a brand site (you can't
@@ -272,15 +302,19 @@ export function mountScrollFlyover(container, config) {
     el.className = 'sf-section';
     Object.assign(el.style, {
       position: 'absolute', left: '6%', bottom: '10%', maxWidth: '440px', boxSizing: 'border-box',
-      opacity: '0', transition: 'opacity 0.5s ease', color: '#fff',
+      opacity: '0', transition: 'opacity 0.5s ease', color: cssVar('textColor'),
       fontFamily: 'system-ui, sans-serif',
       // A flat text-shadow over live WebGL isn't reliable contrast — the scene
       // gradient behind this panel is picked per-build for how it looks lit, not
       // for HTML contrast (references/gotchas.md), and can land near-white (e.g.
       // a light palette's top stop), leaving white text unreadable. A solid-ish
       // scrim guarantees contrast against ANY background, unlike a blur shadow.
-      background: 'rgba(10,10,16,0.62)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
-      padding: '1.1em 1.3em', borderRadius: '12px',
+      // Overriding --sf-overlay-bg/--sf-text-color is the consumer's job to keep
+      // that contrast if they retheme it (see README "Theming").
+      background: cssVar('overlayBg'),
+      backdropFilter: `blur(${cssVar('overlayBlur')})`,
+      WebkitBackdropFilter: `blur(${cssVar('overlayBlur')})`,
+      padding: cssVar('overlayPadding'), borderRadius: cssVar('overlayRadius'),
     });
     const accent = palette.accent || '#e8a33d';
     const ctaTextColor = readableTextColor(accent);
@@ -288,8 +322,8 @@ export function mountScrollFlyover(container, config) {
       ${sceneCfg.eyebrow ? `<div style="letter-spacing:0.1em;text-transform:uppercase;font-size:0.75rem;opacity:0.8">${escapeHtml(sceneCfg.eyebrow)}</div>` : ''}
       <h2 style="font-size:2rem;margin:0.3em 0;font-weight:700">${escapeHtml(sceneCfg.title || '')}</h2>
       <p style="font-size:1rem;line-height:1.5;opacity:0.9">${escapeHtml(sceneCfg.body || '')}</p>
-      ${(sceneCfg.tags || []).map(t => `<span style="display:inline-block;margin:0.3em 0.4em 0 0;padding:0.2em 0.7em;border:1px solid rgba(255,255,255,0.5);border-radius:999px;font-size:0.8rem">${escapeHtml(t)}</span>`).join('')}
-      ${sceneCfg.cta ? `<div style="margin-top:1em"><button style="pointer-events:auto;min-height:44px;min-width:44px;padding:0.6em 1.4em;border:none;border-radius:8px;background:${escapeHtml(accent)};color:${ctaTextColor};font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(sceneCfg.cta)}</button></div>` : ''}
+      ${(sceneCfg.tags || []).map(t => `<span style="display:inline-block;margin:0.3em 0.4em 0 0;padding:0.2em 0.7em;border:1px solid ${cssVar('tagBorder')};border-radius:999px;font-size:0.8rem">${escapeHtml(t)}</span>`).join('')}
+      ${sceneCfg.cta ? `<div style="margin-top:1em"><button style="pointer-events:auto;min-height:44px;min-width:44px;padding:0.6em 1.4em;border:none;border-radius:${cssVar('ctaRadius')};background:${cssVar('ctaBg', escapeHtml(accent))};color:${cssVar('ctaTextColor', ctaTextColor)};font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(sceneCfg.cta)}</button></div>` : ''}
     `;
     overlay.appendChild(el);
     return el;
@@ -316,7 +350,7 @@ export function mountScrollFlyover(container, config) {
     const dot = document.createElement('span');
     Object.assign(dot.style, {
       display: 'block', width: '8px', height: '8px', borderRadius: '50%',
-      background: 'rgba(255,255,255,0.35)', transition: 'background 0.25s ease, transform 0.25s ease',
+      background: cssVar('railDot'), transition: 'background 0.25s ease, transform 0.25s ease',
     });
     hit.appendChild(dot);
     hit.addEventListener('click', () => {
@@ -333,7 +367,7 @@ export function mountScrollFlyover(container, config) {
     const active = Math.min(scenes.length - 1, Math.floor(t * scenes.length));
     railDots.forEach((dot, i) => {
       const isActive = i === active;
-      dot.style.background = isActive ? '#fff' : 'rgba(255,255,255,0.35)';
+      dot.style.background = isActive ? cssVar('railDotActive') : cssVar('railDot');
       dot.style.transform = isActive ? 'scale(1.4)' : 'scale(1)';
     });
   }
@@ -622,6 +656,6 @@ function renderStaticFallback(container, palette, scenes, keepExisting = false) 
   // Same reasoning as the copy overlay: the gradient stops are 3D-material hexes, not
   // WCAG-checked HTML colors, so fixed white text can land on a near-white stop. This
   // path also carries no-WebGL/reduced-motion visitors, so it must not silently fail.
-  fallback.innerHTML = `<div style="background:rgba(10,10,16,0.62);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:12px;padding:1.3em 1.6em;color:#fff"><h2 style="font-size:1.6rem;margin:0 0 0.4em">${escapeHtml(scenes[0]?.title || '')}</h2><p style="margin:0">${escapeHtml(scenes[0]?.body || '')}</p></div>`;
+  fallback.innerHTML = `<div style="background:${cssVar('overlayBg')};backdrop-filter:blur(${cssVar('overlayBlur')});-webkit-backdrop-filter:blur(${cssVar('overlayBlur')});border-radius:${cssVar('overlayRadius')};padding:${cssVar('overlayPadding', '1.3em 1.6em')};color:${cssVar('textColor')}"><h2 style="font-size:1.6rem;margin:0 0 0.4em">${escapeHtml(scenes[0]?.title || '')}</h2><p style="margin:0">${escapeHtml(scenes[0]?.body || '')}</p></div>`;
   container.appendChild(fallback);
 }
