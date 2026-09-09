@@ -86,6 +86,17 @@ const THEME_VARS = {
   ctaRadius: ['--sf-cta-radius', '8px'],
   railDot: ['--sf-rail-dot', 'rgba(255,255,255,0.35)'],
   railDotActive: ['--sf-rail-dot-active', '#fff'],
+  // Layout, themable for the same reason the colours are: the defaults below are
+  // tuned for this engine's own overlay, and a consumer laying their own chrome over
+  // the canvas needs to move the copy panel out from under it without forking.
+  // railGutter reserves the rail's 18px offset + 44px tap target + 12px breathing
+  // room; set it to 0px if you hide the rail.
+  railGutter: ['--sf-rail-gutter', '74px'],
+  panelInline: ['--sf-panel-inline', '6%'],
+  panelBottom: ['--sf-panel-bottom', '10%'],
+  panelMaxWidth: ['--sf-panel-max-width', '440px'],
+  titleSize: ['--sf-title-size', 'clamp(1.35rem, 5.2vw, 2rem)'],
+  bodySize: ['--sf-body-size', 'clamp(0.9rem, 3.4vw, 1rem)'],
 };
 // `fallback` overrides the static default above — used where the real default is
 // derived per-build (the CTA's palette accent / computed readable text color) rather
@@ -186,6 +197,13 @@ export function mountScrollFlyover(container, config) {
   Object.assign(pinWrapper.style, {
     position: 'sticky', top: '0', height: '100vh', overflow: 'hidden', display: 'block',
   });
+  // `vh` above is the fallback; `dvh` follows a mobile browser's URL bar as it
+  // collapses and expands, which `vh` does not — a `100vh` pin is taller than the
+  // visible area whenever the bar is showing, so the bottom of the overlay sits below
+  // the fold on exactly the devices where there is least room. setProperty is how the
+  // progressive enhancement is expressed: a browser without `dvh` drops this as an
+  // invalid value and keeps the `100vh` already set above.
+  pinWrapper.style.setProperty('height', '100dvh');
   container.appendChild(pinWrapper);
   pinWrapper.appendChild(renderer.domElement);
   Object.assign(renderer.domElement.style, { position: 'absolute', inset: '0', display: 'block' });
@@ -301,7 +319,16 @@ export function mountScrollFlyover(container, config) {
     const el = document.createElement('div');
     el.className = 'sf-section';
     Object.assign(el.style, {
-      position: 'absolute', left: '6%', bottom: '10%', maxWidth: '440px', boxSizing: 'border-box',
+      // `right` is what keeps the copy off the route rail. Without it the panel is
+      // shrink-to-fit against the whole viewport, so on a narrow screen its text runs
+      // underneath the rail's 44px tap targets; it also made maxWidth meaningless
+      // below ~470px, since the available width bound first. The env() insets keep the
+      // panel clear of a notch in landscape and of the home indicator.
+      position: 'absolute',
+      left: `calc(${cssVar('panelInline')} + env(safe-area-inset-left, 0px))`,
+      right: `calc(${cssVar('railGutter')} + env(safe-area-inset-right, 0px))`,
+      bottom: `calc(${cssVar('panelBottom')} + env(safe-area-inset-bottom, 0px))`,
+      maxWidth: cssVar('panelMaxWidth'), boxSizing: 'border-box',
       opacity: '0', transition: 'opacity 0.5s ease', color: cssVar('textColor'),
       fontFamily: 'system-ui, sans-serif',
       // A flat text-shadow over live WebGL isn't reliable contrast — the scene
@@ -320,8 +347,8 @@ export function mountScrollFlyover(container, config) {
     const ctaTextColor = readableTextColor(accent);
     el.innerHTML = `
       ${sceneCfg.eyebrow ? `<div style="letter-spacing:0.1em;text-transform:uppercase;font-size:0.75rem;opacity:0.8">${escapeHtml(sceneCfg.eyebrow)}</div>` : ''}
-      <h2 style="font-size:2rem;margin:0.3em 0;font-weight:700">${escapeHtml(sceneCfg.title || '')}</h2>
-      <p style="font-size:1rem;line-height:1.5;opacity:0.9">${escapeHtml(sceneCfg.body || '')}</p>
+      <h2 style="font-size:${cssVar('titleSize')};margin:0.3em 0;font-weight:700">${escapeHtml(sceneCfg.title || '')}</h2>
+      <p style="font-size:${cssVar('bodySize')};line-height:1.5;opacity:0.9">${escapeHtml(sceneCfg.body || '')}</p>
       ${(sceneCfg.tags || []).map(t => `<span style="display:inline-block;margin:0.3em 0.4em 0 0;padding:0.2em 0.7em;border:1px solid ${cssVar('tagBorder')};border-radius:999px;font-size:0.8rem">${escapeHtml(t)}</span>`).join('')}
       ${sceneCfg.cta ? `<div style="margin-top:1em"><button style="pointer-events:auto;min-height:44px;min-width:44px;padding:0.6em 1.4em;border:none;border-radius:${cssVar('ctaRadius')};background:${cssVar('ctaBg', escapeHtml(accent))};color:${cssVar('ctaTextColor', ctaTextColor)};font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(sceneCfg.cta)}</button></div>` : ''}
     `;
@@ -337,7 +364,8 @@ export function mountScrollFlyover(container, config) {
   // near-miss tap is more disruptive mid-flight than on a static page.
   const rail = document.createElement('div');
   Object.assign(rail.style, {
-    position: 'absolute', right: '18px', top: '50%', transform: 'translateY(-50%)',
+    position: 'absolute', right: 'calc(18px + env(safe-area-inset-right, 0px))',
+    top: '50%', transform: 'translateY(-50%)',
     display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'auto', zIndex: '2',
   });
   const railDots = scenes.map((_, i) => {
@@ -355,7 +383,7 @@ export function mountScrollFlyover(container, config) {
     hit.appendChild(dot);
     hit.addEventListener('click', () => {
       const targetT = (i + 0.5) / scenes.length;
-      const total = container.offsetHeight - window.innerHeight;
+      const total = scrollTotal();
       window.scrollTo({ top: container.offsetTop + targetT * total, behavior: reducedMotion ? 'auto' : 'smooth' });
     });
     rail.appendChild(hit);
@@ -393,12 +421,33 @@ export function mountScrollFlyover(container, config) {
   container.appendChild(seoBlock);
 
   // ---- scroll driver: a tall spacer sets total scrollable length -----------
-  const scrollLength = window.innerHeight * (scenes.length * 2.2);
+  // This used to be computed once, at mount, and written as fixed pixels — while
+  // currentScrollT() divided by the LIVE window.innerHeight. Numerator frozen,
+  // denominator moving: after a phone rotation from 640px to 360px tall, the flight
+  // stretched to ~1.8x its intended length and every scene's dwell window fell out of
+  // step with where its copy fades. viewportBasis pins the divisor to the same height
+  // the spacer was built from, so the two can never disagree again.
+  let scrollLength = 0;
+  let viewportBasis = 0;
+  let lastLayoutWidth = 0;
   const spacer = document.createElement('div');
-  spacer.style.height = `${scrollLength}px`;
   spacer.style.pointerEvents = 'none';
+  // Chromium's scroll anchoring tries to keep whatever is on screen on screen when
+  // content resizes, which here means it fights the corrective scroll below: measured
+  // 1740px where 1950px was asked for after a rotation. The spacer is an empty strut,
+  // so there is nothing about it worth anchoring to.
+  spacer.style.overflowAnchor = 'none';
   container.appendChild(spacer);
-  container.style.height = `${scrollLength}px`;
+
+  function applyScrollLength() {
+    viewportBasis = window.innerHeight;
+    lastLayoutWidth = container.clientWidth || window.innerWidth;
+    scrollLength = viewportBasis * (scenes.length * 2.2);
+    spacer.style.height = `${scrollLength}px`;
+    container.style.height = `${scrollLength}px`;
+  }
+  function scrollTotal() { return scrollLength - viewportBasis; }
+  applyScrollLength();
 
   let rafId = null;
   let disposed = false;
@@ -416,7 +465,7 @@ export function mountScrollFlyover(container, config) {
 
   function currentScrollT() {
     const rect = container.getBoundingClientRect();
-    const total = container.offsetHeight - window.innerHeight;
+    const total = scrollTotal();
     if (total <= 0) return 0;
     const scrolled = -rect.top;
     return THREE.MathUtils.clamp(scrolled / total, 0, 1);
@@ -443,6 +492,29 @@ export function mountScrollFlyover(container, config) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+
+    // Deliberately NOT rebuilding the scroll length on every resize. On mobile this
+    // event fires continuously while scrolling, as the URL bar collapses and expands,
+    // and re-laying out there would fight the user's own scroll with a corrective
+    // scrollTo on every frame of it. A width change is the signal that the viewport
+    // really changed shape — rotation, or a resized window — and that is when the
+    // spacer has to be rebuilt.
+    if (w === lastLayoutWidth) return;
+    const t = currentScrollT();
+    applyScrollLength();
+    // Rebuilding the spacer moves every pixel offset underneath the visitor, so
+    // restore the position in the flight they were at rather than the scrollTop they
+    // happened to be on — otherwise a rotation drops them somewhere else in the story.
+    // Deferred a frame on purpose: applied synchronously here it races the browser's
+    // own post-resize scroll adjustment and loses.
+    const restore = () => {
+      const total = scrollTotal();
+      if (total > 0) {
+        window.scrollTo({ top: container.offsetTop + t * total, behavior: 'auto' });
+      }
+    };
+    restore();
+    requestAnimationFrame(restore);
   }
 
   function frame() {

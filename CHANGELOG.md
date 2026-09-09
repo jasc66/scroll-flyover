@@ -10,6 +10,61 @@ Versioning note: semver applies to the **library entry point** (`mountScrollFlyo
 Claude Code generates through `SKILL.md` vendor a frozen copy of the engine, so they
 are unaffected by upgrades here until they are regenerated.
 
+## [1.4.0] - 2026-09-09
+
+Mobile and small-viewport correctness. Desktop rendering is unchanged — the copy panel
+measures identically at 1440x900 before and after (left 86.4px, bottom 90px, width
+440px, 32px title).
+
+### Fixed
+
+- **The scroll length no longer freezes at mount.** It was computed once from
+  `window.innerHeight` and written to the spacer as fixed pixels, while
+  `currentScrollT()` divided by the *live* `window.innerHeight` — a frozen numerator
+  over a moving denominator. After a rotation the whole flight was mis-mapped and every
+  scene's dwell window fell out of step with where its copy fades. The spacer is now
+  rebuilt when the viewport width changes, the divisor is pinned to the same height the
+  spacer was built from so the two cannot disagree, and the visitor's position in the
+  flight is preserved across the rebuild rather than their raw `scrollTop`.
+
+  Measured over a 390x844 → 844x390 rotation from the midpoint of the flight: position
+  drift went from **7.66% to 0%**.
+
+  Height-only resizes are deliberately ignored. On mobile they fire continuously as the
+  URL bar collapses and expands during scrolling, and re-laying out there would fight
+  the visitor's own scroll with a corrective jump on every event.
+- **The copy panel no longer runs underneath the route rail.** The panel was
+  `left: 6%` with no `right`, so it shrink-to-fit against the full viewport and its text
+  crossed the rail's 44px tap targets on narrow screens; it also made `max-width: 440px`
+  inert below about 470px, since available width bound first. Measured overlap at
+  320/360/390 portrait: **44px → 0px**. The reserved gutter is themable as
+  `--sf-rail-gutter` (set it to `0px` if you hide the rail).
+- **The pinned wrapper is `100dvh`**, with `100vh` kept as the fallback for browsers
+  without `dvh`. A `100vh` pin stands taller than the visible area whenever a mobile URL
+  bar is showing, pushing the bottom of the overlay below the fold exactly where there
+  is least room. *Not demonstrable in a headless harness* — it has no dynamic URL bar,
+  so both values measure the same there. This one rests on the CSS semantics, not on a
+  measurement.
+- **The copy panel and route rail honour `env(safe-area-inset-*)`**, so a notch in
+  landscape or a home indicator does not sit on top of the copy.
+- **Scene title and body type are fluid.** They were pinned at 2rem and 1rem at every
+  width, which is what turned the narrow-screen layout into a legibility problem rather
+  than merely a tight one. Title measures 32px → 21.6px at 320-390 portrait and stays
+  32px at 740 wide.
+
+### Added
+
+- Six layout theme variables alongside the colour ones from 1.2.0:
+  `--sf-rail-gutter`, `--sf-panel-inline`, `--sf-panel-bottom`, `--sf-panel-max-width`,
+  `--sf-title-size`, `--sf-body-size`. Full table in the README.
+
+### Note on the version bump
+
+Minor rather than patch. No API breaks and no default *colours* move, but the copy
+panel's box and type sizes do change on narrow viewports — a consumer who has tuned
+their own layout around the old fixed geometry will see it shift, so this is not
+something to pick up unread in a patch.
+
 ## [1.3.0] - 2026-09-09
 
 ### Added
@@ -133,6 +188,7 @@ at the trees that were actually published.
   plus the `references/` set) into a project. The engine shipped inside the tarball but
   was not yet importable — see 1.1.0.
 
+[1.4.0]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.4.0
 [1.3.0]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.3.0
 [1.2.0]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.2.0
 [1.1.0]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.1.0

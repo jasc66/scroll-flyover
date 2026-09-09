@@ -172,9 +172,27 @@ handle.dispose(); // on SPA route change / unmount
   | `--sf-cta-radius` | `8px` | CTA button corner radius |
   | `--sf-rail-dot` | `rgba(255,255,255,0.35)` | route rail dot (inactive) |
   | `--sf-rail-dot-active` | `#fff` | route rail dot (active) |
+  | `--sf-rail-gutter` | `74px` | width reserved on the right so copy clears the rail |
+  | `--sf-panel-inline` | `6%` | copy panel inset from the left edge |
+  | `--sf-panel-bottom` | `10%` | copy panel inset from the bottom |
+  | `--sf-panel-max-width` | `440px` | copy panel maximum width |
+  | `--sf-title-size` | `clamp(1.35rem, 5.2vw, 2rem)` | scene title font size |
+  | `--sf-body-size` | `clamp(0.9rem, 3.4vw, 1rem)` | scene body font size |
+
+  Set `--sf-rail-gutter` to `0px` if you hide the route rail — it exists to keep the
+  copy panel from running underneath the rail's 44px tap targets on narrow screens.
 
   `--sf-cta-bg`/`--sf-cta-text-color` override the WCAG-checked defaults (see
   "Status" below) — if you set them, you're responsible for the contrast between them.
+
+- **Viewport handling (since 1.4.0).** The pinned wrapper is `100dvh` with a `100vh`
+  fallback, so it tracks a mobile URL bar instead of standing taller than the visible
+  area. The scroll length is rebuilt when the viewport *width* changes — rotation, or a
+  resized window — and the visitor's position in the flight is preserved across that
+  rebuild. Height-only changes are deliberately ignored: on mobile those fire
+  continuously as the URL bar collapses while scrolling, and re-laying out on them
+  would fight the visitor's own scroll. The copy panel and rail also honour
+  `env(safe-area-inset-*)`, so a notch or home indicator does not sit on the copy.
 
 ## What's in here
 
