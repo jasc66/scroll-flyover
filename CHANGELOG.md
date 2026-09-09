@@ -10,6 +10,36 @@ Versioning note: semver applies to the **library entry point** (`mountScrollFlyo
 Claude Code generates through `SKILL.md` vendor a frozen copy of the engine, so they
 are unaffected by upgrades here until they are regenerated.
 
+## [1.3.0] - 2026-09-09
+
+### Added
+
+- **`npx scroll-flyover --dir <path>`** installs the skill files into a directory of
+  your choosing instead of only `~/.claude/skills/scroll-flyover`. The path names the
+  skill's own folder — it receives `SKILL.md` and `references/` directly. Relative paths
+  resolve against the current working directory.
+
+  The default target was the only target, which meant the installer could not do
+  something the README already documented as valid: Claude Code reads a project's
+  `.claude/skills/` too, and installing there — so the skill can be committed alongside
+  the code that depends on it — was impossible without copying files by hand.
+
+  It also makes the files reachable by agents other than Claude Code, with a caveat
+  worth stating plainly: `SKILL.md` uses Claude Code's frontmatter format, its Step 1
+  interview is written around the `AskUserQuestion` tool, and its Step 8 accessibility
+  audit asks for an `accessibility-reviewer` subagent, so another agent will not run
+  this as a first-class skill and those two steps need a human to drive them. The
+  remaining six steps and all of `references/` are plain Markdown that any agent able
+  to read files on request, or any person, can work from directly.
+- **`--help` and `--version`** on the installer.
+
+### Fixed
+
+- The installer now reports failures instead of surfacing a raw `cpSync` stack trace,
+  rejects unknown arguments and a `--dir` with no value, and exits non-zero when it did
+  not install. It previously had no argument handling at all, so anything passed to it
+  was silently ignored.
+
 ## [1.2.0] - 2026-09-09
 
 ### Added
@@ -103,6 +133,7 @@ at the trees that were actually published.
   plus the `references/` set) into a project. The engine shipped inside the tarball but
   was not yet importable — see 1.1.0.
 
+[1.3.0]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.3.0
 [1.2.0]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.2.0
 [1.1.0]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.1.0
 [1.0.1]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.0.1

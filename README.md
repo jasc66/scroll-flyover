@@ -69,6 +69,28 @@ npx scroll-flyover
 Copies `SKILL.md` and `references/` into `~/.claude/skills/scroll-flyover`. Restart
 Claude Code (or start a new session) to pick it up.
 
+`--dir` installs somewhere else instead — the path names the skill's own folder, which
+receives `SKILL.md` and `references/` directly:
+
+```bash
+# this project only, so the skill can be committed alongside the code
+npx scroll-flyover --dir .claude/skills/scroll-flyover
+
+# anywhere at all
+npx scroll-flyover --dir ./vendor/scroll-flyover
+```
+
+`--dir` makes the files reachable by other agents, but be clear about what that does
+and does not buy. `SKILL.md` uses Claude Code's frontmatter format, its Step 1
+interview is written around the `AskUserQuestion` tool, and its Step 8 accessibility
+audit asks for an `accessibility-reviewer` subagent — so another agent will not run
+this as a first-class skill, and those two steps need a human to drive them instead.
+Everything else is portable: the remaining six steps and all 75KB of `references/`
+are plain Markdown that any agent able to read files on request, or any person, can
+work from directly.
+
+`npx scroll-flyover --help` lists the flags.
+
 Or clone the repo directly:
 
 ```bash
