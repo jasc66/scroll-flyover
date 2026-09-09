@@ -15,6 +15,7 @@
   },
   "files": [
     "bin",
+    "CHANGELOG.md",
     "SKILL.md",
     "references"
   ],

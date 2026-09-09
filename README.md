@@ -238,6 +238,11 @@ applied during the interview and scene-building steps, not a separate pipeline s
   fails automatically instead of waiting for someone to notice by eye — but only once
   the demo repo's pinned version is bumped and re-synced; it does not update itself
   automatically when this repo changes.
+- **Released versions are documented in [`CHANGELOG.md`](CHANGELOG.md)**, and every
+  published version has a matching `vX.Y.Z` git tag pointing at the tree that was
+  actually cut. Semver here covers the library entry point and the `bin` installer;
+  builds generated through `SKILL.md` vendor a frozen copy of the engine, so they are
+  unaffected by an upgrade until they are regenerated.
 
 ## License
 
