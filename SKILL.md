@@ -365,6 +365,7 @@ mountScrollFlyover(document.getElementById('world'), {
   performance: 'rich',             // 'rich' | 'light'
   seed: 20260906,                  // any integer — makes the build reproducible (Step 2)
   layout: layoutSpiral,            // optional archetype from camera-archetypes.md; omit for island hop
+  labels: { goToScene: (i, total) => `Ir a la escena ${i} de ${total}` }, // optional — the engine's OWN strings (route-rail aria-labels), English by default; override to match the page's language
   photos: { hero: 'assets/product-hero.jpg', team: 'assets/team.jpg' }, // optional, Step 2.5 — omit entirely if no photos
   scenes: [
     { id:'farm', build: buildFarmScene,     // a function returning a THREE.Group — see scene-recipes.md

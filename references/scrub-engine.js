@@ -40,6 +40,32 @@ function readableTextColor(bgHex) {
 }
 
 /**
+ * Scene copy is interpolated into markup, so it has to be escaped: as a vendored copy
+ * of this file the strings were authored by whoever wrote the page, but an installed
+ * library gets fed CMS/API content, and an unescaped `"` is enough to break out of an
+ * attribute and inject one. Escapes `&` first so the other replacements aren't
+ * double-encoded.
+ */
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Every string the engine itself puts in front of a user. Functions rather than
+ * templates because word order is not translatable with placeholders alone. English is
+ * the default because the label ends up in the DOM of whatever site installs this —
+ * override via `config.labels` to match the host page's language.
+ */
+const DEFAULT_LABELS = {
+  goToScene: (index, total) => `Go to scene ${index} of ${total}`,
+};
+
+/**
  * Deterministic RNG (mulberry32). Scene builders MUST use this instead of
  * Math.random(): with Math.random() a brand's page renders differently on every
  * reload and on every visitor's screen, which is wrong for a brand site (you can't
@@ -67,7 +93,10 @@ export function mountScrollFlyover(container, config) {
     dwellWeight = 2.5,
     seed = 1,
     layout = null,
+    labels = {},
   } = config;
+
+  const text = { ...DEFAULT_LABELS, ...labels };
 
   if (!scenes.length) throw new Error('scroll-flyover: config.scenes must be non-empty');
 
@@ -253,13 +282,14 @@ export function mountScrollFlyover(container, config) {
       background: 'rgba(10,10,16,0.62)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
       padding: '1.1em 1.3em', borderRadius: '12px',
     });
-    const ctaTextColor = readableTextColor(palette.accent || '#e8a33d');
+    const accent = palette.accent || '#e8a33d';
+    const ctaTextColor = readableTextColor(accent);
     el.innerHTML = `
-      ${sceneCfg.eyebrow ? `<div style="letter-spacing:0.1em;text-transform:uppercase;font-size:0.75rem;opacity:0.8">${sceneCfg.eyebrow}</div>` : ''}
-      <h2 style="font-size:2rem;margin:0.3em 0;font-weight:700">${sceneCfg.title || ''}</h2>
-      <p style="font-size:1rem;line-height:1.5;opacity:0.9">${sceneCfg.body || ''}</p>
-      ${(sceneCfg.tags || []).map(t => `<span style="display:inline-block;margin:0.3em 0.4em 0 0;padding:0.2em 0.7em;border:1px solid rgba(255,255,255,0.5);border-radius:999px;font-size:0.8rem">${t}</span>`).join('')}
-      ${sceneCfg.cta ? `<div style="margin-top:1em"><button style="pointer-events:auto;min-height:44px;min-width:44px;padding:0.6em 1.4em;border:none;border-radius:8px;background:${palette.accent || '#e8a33d'};color:${ctaTextColor};font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${sceneCfg.cta}</button></div>` : ''}
+      ${sceneCfg.eyebrow ? `<div style="letter-spacing:0.1em;text-transform:uppercase;font-size:0.75rem;opacity:0.8">${escapeHtml(sceneCfg.eyebrow)}</div>` : ''}
+      <h2 style="font-size:2rem;margin:0.3em 0;font-weight:700">${escapeHtml(sceneCfg.title || '')}</h2>
+      <p style="font-size:1rem;line-height:1.5;opacity:0.9">${escapeHtml(sceneCfg.body || '')}</p>
+      ${(sceneCfg.tags || []).map(t => `<span style="display:inline-block;margin:0.3em 0.4em 0 0;padding:0.2em 0.7em;border:1px solid rgba(255,255,255,0.5);border-radius:999px;font-size:0.8rem">${escapeHtml(t)}</span>`).join('')}
+      ${sceneCfg.cta ? `<div style="margin-top:1em"><button style="pointer-events:auto;min-height:44px;min-width:44px;padding:0.6em 1.4em;border:none;border-radius:8px;background:${escapeHtml(accent)};color:${ctaTextColor};font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(sceneCfg.cta)}</button></div>` : ''}
     `;
     overlay.appendChild(el);
     return el;
@@ -278,7 +308,7 @@ export function mountScrollFlyover(container, config) {
   });
   const railDots = scenes.map((_, i) => {
     const hit = document.createElement('button');
-    hit.setAttribute('aria-label', `Ir a la escena ${i + 1} de ${scenes.length}`);
+    hit.setAttribute('aria-label', text.goToScene(i + 1, scenes.length));
     Object.assign(hit.style, {
       width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'transparent', border: 'none', padding: '0', cursor: 'pointer',
@@ -321,10 +351,10 @@ export function mountScrollFlyover(container, config) {
   });
   seoBlock.innerHTML = scenes.map((s) => `
     <section>
-      ${s.eyebrow ? `<p>${s.eyebrow}</p>` : ''}
-      <h2>${s.title || ''}</h2>
-      <p>${s.body || ''}</p>
-      ${(s.tags || []).length ? `<ul>${s.tags.map(t => `<li>${t}</li>`).join('')}</ul>` : ''}
+      ${s.eyebrow ? `<p>${escapeHtml(s.eyebrow)}</p>` : ''}
+      <h2>${escapeHtml(s.title || '')}</h2>
+      <p>${escapeHtml(s.body || '')}</p>
+      ${(s.tags || []).length ? `<ul>${s.tags.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : ''}
     </section>`).join('');
   container.appendChild(seoBlock);
 
@@ -592,6 +622,6 @@ function renderStaticFallback(container, palette, scenes, keepExisting = false) 
   // Same reasoning as the copy overlay: the gradient stops are 3D-material hexes, not
   // WCAG-checked HTML colors, so fixed white text can land on a near-white stop. This
   // path also carries no-WebGL/reduced-motion visitors, so it must not silently fail.
-  fallback.innerHTML = `<div style="background:rgba(10,10,16,0.62);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:12px;padding:1.3em 1.6em;color:#fff"><h2 style="font-size:1.6rem;margin:0 0 0.4em">${scenes[0]?.title || ''}</h2><p style="margin:0">${scenes[0]?.body || ''}</p></div>`;
+  fallback.innerHTML = `<div style="background:rgba(10,10,16,0.62);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:12px;padding:1.3em 1.6em;color:#fff"><h2 style="font-size:1.6rem;margin:0 0 0.4em">${escapeHtml(scenes[0]?.title || '')}</h2><p style="margin:0">${escapeHtml(scenes[0]?.body || '')}</p></div>`;
   container.appendChild(fallback);
 }

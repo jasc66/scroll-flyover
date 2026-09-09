@@ -126,6 +126,11 @@ handle.dispose(); // on SPA route change / unmount
 - Each scene's `build(materials, textures, { rng, performance, shapeLanguage, palette })`
   returns a `THREE.Group`. Use the provided `rng` (never `Math.random()`) so builds stay
   reproducible. `references/scene-recipes.md` has copy-pasteable builders.
+- **Scene copy is escaped, not interpolated as HTML** — safe to feed from a CMS, but
+  markup in `title`/`body`/`tags` renders literally rather than as tags.
+- The engine's own UI strings (the route rail's `aria-label`s) default to English.
+  Override them to match the host page's language:
+  ``labels: { goToScene: (i, total) => `Ir a la escena ${i} de ${total}` }``
 
 ## What's in here
 
