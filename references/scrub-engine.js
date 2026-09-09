@@ -77,10 +77,21 @@ export function mountScrollFlyover(container, config) {
 
   // ---- WebGL feature check -------------------------------------------------
   const testCanvas = document.createElement('canvas');
-  const hasWebGL2 = !!testCanvas.getContext('webgl2');
+  const probeContext = testCanvas.getContext('webgl2');
+  const hasWebGL2 = !!probeContext;
+  // This probe is never drawn to, but it holds a real WebGL context against the
+  // browser's per-page limit until the canvas happens to be garbage collected — so a
+  // page that mounts repeatedly was spending two context slots per mount, not one.
+  probeContext?.getExtension('WEBGL_lose_context')?.loseContext();
   if (!hasWebGL2) {
     renderStaticFallback(container, palette, scenes);
-    return { dispose() {} };
+    // Still has to clean up after itself: on this path dispose() used to be a no-op,
+    // so an SPA route change left the fallback card behind in the host's container.
+    return {
+      dispose() {
+        container.querySelector('[data-sf-fallback]')?.remove();
+      },
+    };
   }
 
   // ---- renderer / scene / camera ------------------------------------------
@@ -106,6 +117,10 @@ export function mountScrollFlyover(container, config) {
   // "the visually-sticky canvas wrapper" — everything visual (canvas, copy
   // overlay) mounts inside it; `container` keeps only this wrapper plus the
   // scroll-length spacer and the crawlable SEO block, both added further below.
+  // `container` belongs to the host page, not to the engine — dispose() restores these
+  // two inline values instead of assuming it may reset the element wholesale.
+  const prevInlineHeight = container.style.height;
+  const prevInlinePosition = container.style.position;
   container.style.position = container.style.position || 'relative';
   const pinWrapper = document.createElement('div');
   pinWrapper.className = 'sf-pin';
@@ -138,7 +153,9 @@ export function mountScrollFlyover(container, config) {
   // Without this, MeshStandardMaterial's roughness/metalness do nothing and every
   // prop reads as matte cardboard. Generated from a tiny throwaway scene — no HDRI
   // file, no download, no hosting.
-  scene.environment = (function buildProceduralEnv() {
+  // Keeps the render TARGET, not just its texture: the target owns the GPU allocation,
+  // and dispose() cannot free what it has no reference to.
+  const envRenderTarget = (function buildProceduralEnv() {
     const pmrem = new THREE.PMREMGenerator(renderer);
     pmrem.compileEquirectangularShader();
     const envScene = new THREE.Scene();
@@ -153,8 +170,15 @@ export function mountScrollFlyover(container, config) {
     envScene.add(key, fill);
     const target = pmrem.fromScene(envScene, 0.04);
     pmrem.dispose();
-    return target.texture;
+    // The throwaway env scene was uploaded to the GPU to bake the map; drop it now
+    // rather than waiting for dispose(), since nothing references it after this.
+    envScene.traverse((obj) => {
+      obj.geometry?.dispose?.();
+      obj.material?.dispose?.();
+    });
+    return target;
   })();
+  scene.environment = envRenderTarget.texture;
 
   // ---- materials, built once -----------------------------------------------
   // Roughness/metalness are tuned so the env map above is actually visible; the
@@ -206,6 +230,7 @@ export function mountScrollFlyover(container, config) {
 
   const curve = buildWorldCurve(anchors, SCENE_RADIUS);
   const ease = buildDwellEasing(scenes.length, dwellWeight);
+  const applyBanking = createBanking();
 
   // ---- copy overlay (plain HTML, pinned) -----------------------------------
   const overlay = document.createElement('div');
@@ -386,6 +411,10 @@ export function mountScrollFlyover(container, config) {
   window.addEventListener('resize', resize);
   renderer.domElement.addEventListener('webglcontextlost', (e) => {
     e.preventDefault();
+    // dispose() releases the context on purpose (see forceContextLoss below), which
+    // fires this handler synchronously — without the guard, tearing down would paint a
+    // fallback card into the container on its way out.
+    if (disposed) return;
     contextLost = true;
     updateRunning();
     renderStaticFallback(container, palette, scenes, /*keepExisting*/ true);
@@ -394,6 +423,7 @@ export function mountScrollFlyover(container, config) {
   // "Context Restored" — this is normal recovery, not a fatal error) leaves the
   // flight frozen forever, stuck showing the static fallback card.
   renderer.domElement.addEventListener('webglcontextrestored', () => {
+    if (disposed) return;
     contextLost = false;
     updateRunning();
     container.querySelector('[data-sf-fallback]')?.remove();
@@ -404,13 +434,41 @@ export function mountScrollFlyover(container, config) {
 
   return {
     dispose() {
+      if (disposed) return;
       disposed = true;
       if (rafId) cancelAnimationFrame(rafId);
       io.disconnect();
       window.removeEventListener('resize', resize);
+
+      // Everything below is GPU memory, which dropping JS references does NOT free.
+      // A mount/dispose cycle is the normal case in an SPA (route change, React
+      // unmount), so anything missed here accumulates until the tab is reloaded.
+      scene.traverse((obj) => {
+        obj.geometry?.dispose?.();
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach((m) => m?.dispose?.());
+      });
+      materials.forEach((m) => m.dispose());
       Object.values(textures).forEach(tex => tex?.dispose?.());
+      scene.background?.dispose?.();
+      envRenderTarget.dispose();
+
+      // renderer.dispose() tears down three's internal caches but does NOT release the
+      // WebGL context — verified by reading three r186, where dispose() only clears
+      // caches and forceContextLoss() is the sole caller of WEBGL_lose_context. Since
+      // browsers cap how many contexts a page may hold at once, leaving each mount's
+      // context alive until GC gets around to the canvas puts an SPA at the mercy of
+      // collection timing for a resource it is supposed to own.
+      renderer.forceContextLoss();
       renderer.dispose();
-      container.innerHTML = '';
+
+      // Remove only what this engine appended — the host may own other children of
+      // `container`, which the previous `innerHTML = ''` destroyed along with them.
+      pinWrapper.remove();
+      seoBlock.remove();
+      spacer.remove();
+      container.style.height = prevInlineHeight;
+      container.style.position = prevInlinePosition;
     },
   };
 }
@@ -464,18 +522,24 @@ function updateCameraOnCurve(curve, camera, t, lookAhead = 0.015) {
   camera.lookAt(lookAt);
 }
 
-let bankHistory = [];
-function applyBanking(curve, camera, t, maxBankRad = 0.35) {
-  const c0 = THREE.MathUtils.clamp(t, 0, 1);
-  const c1 = THREE.MathUtils.clamp(t + 0.01, 0, 1);
-  const tangent = curve.getTangentAt(c0);
-  const tangentNext = curve.getTangentAt(c1);
-  const curvature = tangentNext.clone().sub(tangent).length();
-  bankHistory.push(curvature);
-  if (bankHistory.length > 5) bankHistory.shift();
-  const avgCurvature = bankHistory.reduce((a, b) => a + b, 0) / bankHistory.length;
-  const bank = THREE.MathUtils.clamp(avgCurvature * 8, -maxBankRad, maxBankRad);
-  camera.up.set(Math.sin(bank), Math.cos(bank), 0);
+// The 5-frame smoothing window is per-flight STATE, so each mount gets its own via this
+// factory. As a module-level array it was shared by every flyover on the page (two
+// mounts fed each other's curvature into one history) and it survived dispose(), so a
+// remount started banking from the previous flight's turns instead of level.
+function createBanking(maxBankRad = 0.35) {
+  const history = [];
+  return function applyBanking(curve, camera, t) {
+    const c0 = THREE.MathUtils.clamp(t, 0, 1);
+    const c1 = THREE.MathUtils.clamp(t + 0.01, 0, 1);
+    const tangent = curve.getTangentAt(c0);
+    const tangentNext = curve.getTangentAt(c1);
+    const curvature = tangentNext.clone().sub(tangent).length();
+    history.push(curvature);
+    if (history.length > 5) history.shift();
+    const avgCurvature = history.reduce((a, b) => a + b, 0) / history.length;
+    const bank = THREE.MathUtils.clamp(avgCurvature * 8, -maxBankRad, maxBankRad);
+    camera.up.set(Math.sin(bank), Math.cos(bank), 0);
+  };
 }
 
 function buildDwellEasing(sceneCount, dwellWeight = 2.5) {
