@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-"use strict";
 
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { fileURLToPath } from "node:url";
 
-const packageRoot = path.join(__dirname, "..");
+const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const targetDir = path.join(os.homedir(), ".claude", "skills", "scroll-flyover");
 
 const filesToInstall = ["SKILL.md", "references"];

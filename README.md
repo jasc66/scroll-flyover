@@ -60,6 +60,8 @@ broke and why.
 
 ## Install
 
+### As a Claude Code skill
+
 ```bash
 npx scroll-flyover
 ```
@@ -78,6 +80,52 @@ folder under `~/.claude/skills/` (or a project's `.claude/skills/`) containing a
 `SKILL.md` with the right frontmatter automatically — see `SKILL.md` for the full
 skill definition and `references/` for the copy-pasteable Three.js patterns it's built
 from.
+
+### As a library
+
+The scrub engine is also importable directly, for projects that want the scroll/camera
+machinery without generating a build through Claude Code:
+
+```bash
+npm install scroll-flyover three
+```
+
+```js
+import * as THREE from 'three';
+import { mountScrollFlyover, makeRng } from 'scroll-flyover';
+
+const handle = mountScrollFlyover(document.querySelector('#world'), {
+  palette: { colors: ['#0e1c2b', '#1d3a52', '#c9d6df'], accent: '#e8a33d' },
+  seed: 7,
+  scenes: [
+    {
+      eyebrow: 'Chapter one',
+      title: 'Arrival',
+      body: 'One line of copy per scene.',
+      build: (materials, textures, { rng, performance }) => {
+        const group = new THREE.Group();
+        group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(2, 0), materials[1]));
+        return group;
+      },
+    },
+  ],
+});
+
+handle.dispose(); // on SPA route change / unmount
+```
+
+- **`three` is an optional peer dependency**, `>=0.152.0` (that's where
+  `renderer.outputColorSpace` landed; verified against 0.152.0 through 0.186.0). It is
+  marked optional so `npx scroll-flyover` skill installs don't pull it in — install it
+  yourself when using the library entry point.
+- **ESM only, browser only.** `mountScrollFlyover` touches `window`/`document` on call,
+  so under Next.js import the component with `dynamic(..., { ssr: false })`.
+- **The container must be a normal-flow element**, not `position: sticky` — the engine
+  sets its height and mounts its own sticky wrapper inside. See the comments in
+  `references/scrub-engine.js` for why.
+- Each scene's `build(materials, textures, { rng, performance, shapeLanguage, palette })`
+  returns a `THREE.Group`. Use the provided `rng` (never `Math.random()`) so builds stay
+  reproducible. `references/scene-recipes.md` has copy-pasteable builders.
 
 ## What's in here
 
