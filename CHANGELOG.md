@@ -10,6 +10,16 @@ Versioning note: semver applies to the **library entry point** (`mountScrollFlyo
 Claude Code generates through `SKILL.md` vendor a frozen copy of the engine, so they
 are unaffected by upgrades here until they are regenerated.
 
+## [1.4.1] - 2026-09-09
+
+Docs only, no engine or installer changes.
+
+### Added
+
+- A second "real production build" example in the README: blog-tecno.vercel.app
+  (TechInsight), a tech/science news blog using the tunnel-flight archetype, with five
+  screenshots in `examples/blog-tecno/`.
+
 ## [1.4.0] - 2026-09-09
 
 Mobile and small-viewport correctness. Desktop rendering is unchanged — the copy panel
@@ -188,6 +198,7 @@ at the trees that were actually published.
   plus the `references/` set) into a project. The engine shipped inside the tarball but
   was not yet importable — see 1.1.0.
 
+[1.4.1]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.4.1
 [1.4.0]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.4.0
 [1.3.0]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.3.0
 [1.2.0]: https://github.com/jasc66/scroll-flyover/releases/tag/v1.2.0
