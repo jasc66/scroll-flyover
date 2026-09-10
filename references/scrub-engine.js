@@ -80,6 +80,13 @@ const DEFAULT_LABELS = {
   // context a screen reader gets for it. The name MUST still begin with the visible
   // label, or speaking that label no longer activates it (WCAG 2.5.3, Label in Name).
   ctaInScene: (label, title) => (title ? `${label} — ${title}` : label),
+  // Spoken by the live region, not read off the page: `aria-current` on the rail says
+  // which scene is active only to someone who has gone looking at the rail. A visitor
+  // scrolling the flight — with the keyboard, on the document — moves between scenes
+  // without any of it reaching them (WCAG 4.1.3, Status Messages). The position comes
+  // first because it is the part that orients: "3 of 6" is the answer to "where am I".
+  sceneAnnouncement: (index, total, title) =>
+    (title ? `Scene ${index} of ${total}: ${title}` : `Scene ${index} of ${total}`),
 };
 
 /**
@@ -111,6 +118,14 @@ const THEME_VARS = {
   ctaFontSize: ['--sf-cta-font-size', '0.85rem'],
   railDot: ['--sf-rail-dot', 'rgba(255,255,255,0.35)'],
   railDotActive: ['--sf-rail-dot-active', '#fff'],
+  // The focus ring is two rings, for the same reason the copy panel has a scrim: what
+  // sits behind these controls is a live WebGL scene, picked per build for how it looks
+  // lit and free to be near-white in one frame and near-black in the next — so no single
+  // ring colour can hold 3:1 against it (WCAG 1.4.11). A light ring wrapped in a dark
+  // one always has one half contrasting, whatever it lands on. Left to the browser, this
+  // was a thin UA outline over bloom.
+  focusRing: ['--sf-focus-ring', '#fff'],
+  focusRingShadow: ['--sf-focus-ring-shadow', 'rgba(0,0,0,0.9)'],
   // Layout, themable for the same reason the colours are: the defaults below are
   // tuned for this engine's own overlay, and a consumer laying their own chrome over
   // the canvas needs to move the copy panel out from under it without forking.
@@ -313,6 +328,12 @@ function validateMountArgs(container, config) {
         `It is called once per rail dot, so a fixed string would give every dot the same aria-label.`,
       );
     }
+    if (labels.sceneAnnouncement !== undefined && typeof labels.sceneAnnouncement !== 'function') {
+      fail(
+        `config.labels.sceneAnnouncement must be a function (index, total, title) => string, got ${typeName(labels.sceneAnnouncement)}. ` +
+        `It is spoken on every scene change, so a fixed string would announce the same thing at each one.`,
+      );
+    }
   }
 
   // Warnings, not errors: an unrecognised value here still renders a correct page, just
@@ -409,6 +430,26 @@ export function mountScrollFlyover(container, config) {
   pinWrapper.style.setProperty('height', '100dvh');
   container.appendChild(pinWrapper);
   pinWrapper.appendChild(renderer.domElement);
+
+  // ---- focus ring ----------------------------------------------------------
+  // The one thing here that cannot be an inline style: `:focus-visible` is a selector,
+  // and the distinction it draws is the point. Painting the ring on plain `:focus`
+  // instead — the only thing inline styles could express, via focus/blur listeners —
+  // would ring every rail dot a mouse taps, which is exactly what `:focus-visible`
+  // exists to stop. Lives inside pinWrapper so dispose() takes it away with everything
+  // else; the rules are scoped to this engine's own class, so a second mount's
+  // duplicate is inert rather than a conflict.
+  const focusStyle = document.createElement('style');
+  focusStyle.textContent = `
+    .sf-focusable:focus-visible {
+      outline: 3px solid ${cssVar('focusRing')};
+      outline-offset: 2px;
+      /* Spread only, no blur, and wider than the outline reaches: an outer box-shadow
+         paints behind the element's own box while the outline paints over it, so the
+         two interleave into dark 0-2px, light 2-5px, dark 5-7px. */
+      box-shadow: 0 0 0 7px ${cssVar('focusRingShadow')};
+    }`;
+  pinWrapper.appendChild(focusStyle);
   Object.assign(renderer.domElement.style, { position: 'absolute', inset: '0', display: 'block' });
 
   const scene = new THREE.Scene();
@@ -599,6 +640,7 @@ export function mountScrollFlyover(container, config) {
       const ctaWrap = document.createElement('div');
       ctaWrap.style.marginTop = '1em';
       const cta = document.createElement(sceneCfg.ctaHref ? 'a' : 'button');
+      cta.className = 'sf-focusable';
       cta.textContent = sceneCfg.cta;
       if (sceneCfg.ctaHref) {
         cta.href = sceneCfg.ctaHref;
@@ -653,6 +695,7 @@ export function mountScrollFlyover(container, config) {
   });
   const railDots = scenes.map((_, i) => {
     const hit = document.createElement('button');
+    hit.className = 'sf-focusable';
     // Without this a <button> defaults to type="submit". The engine is dropped into
     // host pages it does not control, and a landing page that wraps the hero in a
     // <form> (an adjacent signup form is the common case) would submit that form every
@@ -681,6 +724,47 @@ export function mountScrollFlyover(container, config) {
   });
   overlay.appendChild(rail);
 
+  // ---- live region: where the flight is now --------------------------------
+  // `aria-current` on the rail (below) is a property of a control: it answers the
+  // question only once someone has tabbed to the rail and gone looking. But scrolling
+  // is how this thing is driven — Page Down, Space, a wheel, a thumb — and a visitor
+  // doing that from the document moves through every scene without one word of it
+  // reaching them. That is WCAG 4.1.3: a change of state, away from the focus, has to
+  // be announced. Not a duplicate of the linear block, which is the copy itself; this
+  // says only which scene the flight is parked at.
+  const announcer = document.createElement('div');
+  announcer.setAttribute('aria-live', 'polite');
+  // The whole line is one message, so an index change must not be read on its own.
+  announcer.setAttribute('aria-atomic', 'true');
+  Object.assign(announcer.style, {
+    position: 'absolute', width: '1px', height: '1px', overflow: 'hidden',
+    clip: 'rect(0 0 0 0)', clipPath: 'inset(50%)', whiteSpace: 'nowrap',
+  });
+  // Inside the overlay, which — unlike the .sf-section panels — is never inert and
+  // never aria-hidden. A live region in either would be silently muted.
+  overlay.appendChild(announcer);
+
+  // A scene boundary is crossed on the way past it, not only on the way to it: a fast
+  // scroll through six scenes crosses five of them in well under a second, and
+  // announcing each would queue six messages a screen reader then reads out in full,
+  // long after the visitor stopped. Only the scene the flight actually settles on is
+  // worth a word, so the message waits for the scrolling to stop.
+  const ANNOUNCE_SETTLE_MS = 250;
+  let announceTimer = 0;
+  let announcedIndex = -1;
+  function announceScene(index) {
+    if (index === announcedIndex) return;
+    const isFirstSeen = announcedIndex === -1;
+    announcedIndex = index;
+    // Whatever scene the page happens to open on is not a change — announcing it would
+    // talk over the page's own load, and over a deep link's landing position.
+    if (isFirstSeen) return;
+    clearTimeout(announceTimer);
+    announceTimer = setTimeout(() => {
+      announcer.textContent = text.sceneAnnouncement(index + 1, scenes.length, scenes[index]?.title || '');
+    }, ANNOUNCE_SETTLE_MS);
+  }
+
   function updateRail(t) {
     const active = Math.min(scenes.length - 1, Math.floor(t * scenes.length));
     railDots.forEach(({ hit, dot }, i) => {
@@ -692,6 +776,7 @@ export function mountScrollFlyover(container, config) {
       // with no indication of which one the flight is currently at.
       hit.setAttribute('aria-current', isActive ? 'true' : 'false');
     });
+    announceScene(active);
   }
 
   // ---- canonical copy: the crawlable, linear content block -----------------
@@ -898,6 +983,10 @@ export function mountScrollFlyover(container, config) {
       if (disposed) return;
       disposed = true;
       if (rafId) cancelAnimationFrame(rafId);
+      // A pending announcement outlives the DOM it describes: the timer holds the
+      // announcer element, so an unmount inside the settle window would write to a
+      // detached node and keep the whole overlay alive until it fired.
+      clearTimeout(announceTimer);
       io.disconnect();
       window.removeEventListener('resize', resize);
 

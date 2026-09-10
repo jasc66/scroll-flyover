@@ -78,6 +78,9 @@ test('the remaining optional properties are shape-checked', () => {
   expectRejection(fakeContainer(), validConfig({ photos: 'hero.jpg' }), /photos must be an object/);
   expectRejection(fakeContainer(), validConfig({ photos: { hero: null } }), /photos\["hero"\] must be an image URL string/);
   expectRejection(fakeContainer(), validConfig({ labels: { goToScene: 'Ir a la escena' } }), /labels\.goToScene must be a function/);
+  // A fixed string here is the tempting mistake — it reads like a label but is spoken
+  // on every scene change, so all of them would announce the same thing.
+  expectRejection(fakeContainer(), validConfig({ labels: { sceneAnnouncement: 'Escena' } }), /labels\.sceneAnnouncement must be a function/);
 });
 
 test('a valid config gets past validation untouched', () => {
@@ -91,6 +94,7 @@ test('a valid config gets past validation untouched', () => {
     validConfig({ palette: { colors: ['red', 'rgb(0,0,0)', '#fc0'] } }),
     validConfig({ palette: { colors: ['#fff'], accent: '#FC0' } }),
     validConfig({ layout: () => [], photos: { hero: '/hero.jpg' }, labels: { goToScene: () => 'x' } }),
+    validConfig({ labels: { sceneAnnouncement: (i, total, title) => `${i}/${total} ${title}` } }),
   ];
   for (const config of configs) {
     try {

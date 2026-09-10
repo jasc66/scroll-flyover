@@ -132,12 +132,16 @@ handle.dispose(); // on SPA route change / unmount
   { title: 'Arrival', build: buildArrival, cta: 'Get started', ctaHref: '/signup' }
   { title: 'Arrival', build: buildArrival, cta: 'Play',        onCta: (event, { index, scene }) => {…} }
   ```
-- The engine's own UI strings (the route rail's `aria-label`s, and the CTA's accessible
-  name) default to English. Override them to match the host page's language:
-  ``labels: { goToScene: (i, total) => `Ir a la escena ${i} de ${total}` }``, and
-  ``labels: { ctaInScene: (label, title) => `${label} — ${title}` }``. A `ctaInScene`
-  override must keep the visible label at the front, or speaking that label no longer
-  activates the control (WCAG 2.5.3, Label in Name).
+- The engine's own UI strings (the route rail's `aria-label`s, the CTA's accessible
+  name, and the scene announcement) default to English. Override them to match the host
+  page's language:
+  ``labels: { goToScene: (i, total) => `Ir a la escena ${i} de ${total}` }``,
+  ``labels: { ctaInScene: (label, title) => `${label} — ${title}` }``, and
+  ``labels: { sceneAnnouncement: (i, total, title) => `Escena ${i} de ${total}: ${title}` }``.
+  A `ctaInScene` override must keep the visible label at the front, or speaking that
+  label no longer activates the control (WCAG 2.5.3, Label in Name). `sceneAnnouncement`
+  is spoken by a polite live region when the flight settles on a new scene (since 1.7.0)
+  — keep the position in it, since that is the part that says how far in the visitor is.
 - **Theming (opt-in, since 1.2.0):** the copy overlay's colors, blur, and radii are
   inline styles whose *values* are `var(--sf-x, <default>)`, not literals — set any of
   these as a CSS custom property on `container` (or an ancestor, they inherit like
@@ -158,6 +162,8 @@ handle.dispose(); // on SPA route change / unmount
   | `--sf-cta-font-size` | `0.85rem` | CTA label size — stated since 1.6.0, because a `<button>` and an `<a>` disagree about the default |
   | `--sf-rail-dot` | `rgba(255,255,255,0.35)` | route rail dot (inactive) |
   | `--sf-rail-dot-active` | `#fff` | route rail dot (active) |
+  | `--sf-focus-ring` | `#fff` | keyboard focus ring, inner (since 1.7.0) |
+  | `--sf-focus-ring-shadow` | `rgba(0,0,0,0.9)` | keyboard focus ring, outer contrast band (since 1.7.0) |
   | `--sf-rail-gutter` | `74px` | width reserved on the right so copy clears the rail |
   | `--sf-panel-inline` | `6%` | copy panel inset from the left edge |
   | `--sf-panel-bottom` | `10%` | copy panel inset from the bottom |
@@ -170,6 +176,12 @@ handle.dispose(); // on SPA route change / unmount
 
   `--sf-cta-bg`/`--sf-cta-text-color` override the WCAG-checked defaults (see
   "Status" below) — if you set them, you're responsible for the contrast between them.
+
+  The two focus-ring variables are a **pair**, and the pair is the point: the ring sits
+  over a live 3D scene that can be near-white in one frame and near-black in the next,
+  so a light inner ring wrapped in a dark outer one always has one half contrasting
+  against whatever it lands on. Retheme them together — two rings of similar lightness
+  is the same as having no ring at all on half the flight.
 
 - **Viewport handling (since 1.4.0).** The pinned wrapper is `100dvh` with a `100vh`
   fallback, so it tracks a mobile URL bar instead of standing taller than the visible
@@ -190,7 +202,7 @@ handle.dispose(); // on SPA route change / unmount
   making every such build identical), `dwellWeight` (`0` divides by zero and renders
   nothing), `layout`'s return shape, `photos`, each scene's CTA (`ctaHref`/`onCta` are
   mutually exclusive, and a destination with no `cta` label has nothing to render), and
-  `labels.goToScene`/`labels.ctaInScene`. Unrecognised
+  `labels.goToScene`/`labels.ctaInScene`/`labels.sceneAnnouncement`. Unrecognised
   `performance`/`cameraFeel` values warn rather than throw, since they still render a
   correct page. `shapeLanguage` is deliberately *not* validated — it is passed straight
   through to your scene builders, so it may carry a vocabulary of your own.

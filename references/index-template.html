@@ -22,7 +22,18 @@
   </script>
 </head>
 <body>
-  <div id="world"></div>
+  <!--
+    The flyover IS this page, so there is nothing below it to skip to and a skip link
+    here would be noise. The <main> is still required: without it the page offers no
+    landmark at all. The moment you add anything after the flight — a contact form, a
+    pricing table, a footer — add the skip link too, before #world in the DOM. The
+    container is several viewports of scroll plus a tab stop per scene, and it stands
+    between a keyboard visitor and everything after it (WCAG 2.4.1). SKILL.md Step 6
+    has the markup.
+  -->
+  <main>
+    <div id="world"></div>
+  </main>
 
   <script type="module">
     import * as THREE from 'three';

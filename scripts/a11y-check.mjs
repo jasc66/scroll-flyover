@@ -29,6 +29,33 @@ const check = (name, pass, detail) => {
   if (!pass) failures++;
 };
 
+console.log('\n=== 7) the live region exists, and says nothing on load ===');
+// aria-current tells someone who tabbed to the rail. Scrolling is how the flight is
+// actually driven, and a visitor doing that from the document crosses every scene
+// with nothing announced — WCAG 4.1.3. The region has to be in the DOM from mount
+// (a live region added and filled in one go is not reliably spoken) and empty until
+// the visitor has actually moved: announcing the landing scene talks over page load.
+const liveRegion = await page.evaluate(() => {
+  const el = document.querySelector('.sf-overlay [aria-live]');
+  if (!el) return null;
+  return {
+    politeness: el.getAttribute('aria-live'),
+    atomic: el.getAttribute('aria-atomic'),
+    text: el.textContent.trim(),
+    muted: !!el.closest('[inert]') || !!el.closest('[aria-hidden="true"]'),
+    painted: el.getBoundingClientRect().width > 1 || el.getBoundingClientRect().height > 1,
+  };
+});
+console.log(`  ${JSON.stringify(liveRegion)}`);
+check('the overlay carries a live region', liveRegion !== null);
+check('it is polite, not assertive', liveRegion?.politeness === 'polite',
+  'a scene change must not interrupt what is being read');
+check('it is atomic, so the whole line is read as one message', liveRegion?.atomic === 'true');
+// A live region inside either is silently muted — the .sf-section panels are both.
+check('it is in neither an inert nor an aria-hidden subtree', liveRegion?.muted === false);
+check('it is visually hidden, not painted', liveRegion?.painted === false);
+check('it is silent on load', liveRegion?.text === '', `announced: ${JSON.stringify(liveRegion?.text)}`);
+
 console.log('\n=== 3) type="button" on every button the engine creates ===');
 const buttonTypes = await page.$$eval('.sf-overlay button', (els) =>
   els.map((b) => ({ type: b.type, label: b.getAttribute('aria-label') || b.textContent.trim() })));
@@ -105,6 +132,19 @@ const railAfter = await page.$$eval('.sf-overlay button[aria-label]', (els) =>
 console.log(`  after scrolling to 80%: [${railAfter.join(', ')}]`);
 check('the active rail button moved', railAfter.join() !== railState.join(),
   `${railState.join()} -> ${railAfter.join()}`);
+
+console.log('\n=== 7b) ...and the live region says so once the scrolling settles ===');
+// The scroll above has already outlasted the settle window, so the message is due.
+const announced = await page.evaluate(() =>
+  document.querySelector('.sf-overlay [aria-live]').textContent.trim());
+const activeIndex = railAfter.indexOf('true') + 1;
+console.log(`  announced: ${JSON.stringify(announced)} (rail says scene ${activeIndex} of ${railAfter.length})`);
+check('a scene change reaches the live region', announced !== '');
+// The position is the part that orients — a title alone does not say how far in it is.
+check('the announcement carries the position, not just a title',
+  announced.includes(String(activeIndex)) && announced.includes(String(railAfter.length)));
+check('the announcement agrees with the rail',
+  announced.includes(String(activeIndex)), `rail is at ${activeIndex}`);
 
 // From here on the second scene is the one on screen — it is the one carrying a CTA.
 await page.evaluate(() => {
@@ -204,6 +244,54 @@ check('the block carries one section per scene', order?.blockSections === sceneC
 // A control in a 1px clipped block is a tab stop with nothing on screen to show it
 // has focus. The rail is how assistive tech reaches a scene's button instead.
 check('the block holds no focusable controls', order?.blockHasControls === 0);
+
+console.log('\n=== 6b) the page shell the template models (SKILL.md Step 6) ===');
+// Not the engine's doing — it is the host page's, which is exactly why it is asserted
+// here: the template is the markup builders copy, so a landmark deleted from it
+// propagates into every build made from it.
+const shell = await page.evaluate(() => {
+  const mains = document.querySelectorAll('main');
+  return { count: mains.length, wrapsMount: !!document.getElementById('world')?.closest('main') };
+});
+console.log(`  ${JSON.stringify(shell)}`);
+check('the page has exactly one <main>', shell.count === 1);
+check('the mount container sits inside it', shell.wrapsMount === true);
+
+console.log('\n=== 8) every control the engine creates shows a focus ring on the scene ===');
+// What sits behind these controls is a live WebGL scene, free to be near-white in one
+// frame and near-black in the next, so the browser's own thin outline is not reliably
+// visible over it (WCAG 2.4.7 / 1.4.11). The engine paints its own two-tone ring — and
+// it has to be :focus-visible, not :focus, or a mouse tap on a rail dot rings it too.
+await page.evaluate(() => document.body.focus());
+const rings = [];
+for (let i = 0; i < 12; i++) {
+  await page.keyboard.press('Tab');
+  const info = await page.evaluate(() => {
+    const el = document.activeElement;
+    if (!el || el === document.body || !el.classList.contains('sf-focusable')) return null;
+    const s = getComputedStyle(el);
+    return {
+      tag: el.tagName,
+      label: (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 24),
+      focusVisible: el.matches(':focus-visible'),
+      outlineStyle: s.outlineStyle,
+      outlineWidth: parseFloat(s.outlineWidth),
+      boxShadow: s.boxShadow,
+    };
+  });
+  if (info) rings.push(info);
+}
+rings.slice(0, 4).forEach((r) => console.log(
+  `  ${r.tag} "${r.label}" outline=${r.outlineWidth}px ${r.outlineStyle} focus-visible=${r.focusVisible}`));
+check('keyboard focus reached the engine\'s controls', rings.length > 0, `${rings.length} control(s)`);
+check('every one matches :focus-visible when tabbed to', rings.every((r) => r.focusVisible));
+// A real CSS outline, not a ring drawn with box-shadow alone: outline is what survives
+// forced-colors mode, where box-shadow is dropped entirely.
+check('every one paints a real outline', rings.every((r) => r.outlineStyle === 'solid' && r.outlineWidth >= 2),
+  rings.map((r) => `${r.outlineWidth}px ${r.outlineStyle}`).join(', '));
+// The second, darker ring is what keeps the light one visible over a light scene.
+check('every one carries the contrasting outer ring',
+  rings.every((r) => r.boxShadow && r.boxShadow !== 'none'));
 
 await browser.close();
 server.close();

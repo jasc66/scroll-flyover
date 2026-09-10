@@ -420,6 +420,52 @@ the block, controls where they are painted (the CTA is a *sibling* of the aria-h
 copy, never inside it — `aria-hidden` over a focusable control leaves a tab stop
 assistive tech cannot name).
 
+### Give the page a skip link and a `<main>` — the engine cannot
+
+**This is the builder's job, not the engine's, and it is the one accessibility defect a
+flyover has by construction.** The mount container is a block of scroll the visitor has
+to get *through*: the spacer makes the flight several viewports tall, and the overlay
+adds a tab stop per scene plus one rail dot per scene ahead of anything below it. So a
+keyboard visitor who wants the contact form, the pricing table, the footer — anything
+the page has after its hero — pays the whole flight to reach it. That is exactly the
+"block of repeated content" WCAG 2.4.1 (Bypass Blocks) exists for.
+
+The engine cannot fix this from inside: the thing worth skipping *to* lives outside the
+container it was handed, in a page it knows nothing about. Every generated build needs,
+in its own shell:
+
+```html
+<body>
+  <a class="skip-link" href="#main-content">Skip the intro animation</a>
+  <div id="world"><!-- the flyover mounts here --></div>
+  <main id="main-content" tabindex="-1">…the rest of the page…</main>
+</body>
+```
+
+```css
+/* Visible only when focused — it is the first tab stop on the page. */
+.skip-link { position: absolute; left: -9999px; }
+.skip-link:focus {
+  left: 1rem; top: 1rem; z-index: 10; /* above the pinned canvas */
+  padding: 0.6em 1em; background: #fff; color: #000; border-radius: 6px;
+}
+```
+
+Two details that are easy to get wrong:
+- **`tabindex="-1"` on the target.** Without it, focus does not move to a non-interactive
+  container in most browsers — the page scrolls and the next Tab press carries on from
+  the link, straight back into the rail.
+- **The link must be the first focusable element in the DOM,** before the mount
+  container. A skip link placed after the thing it skips is decoration.
+
+Name it for what it does here ("Skip the intro animation" / "Go to the content"), not the
+generic "skip to content" — on this page the block being skipped is the whole hero
+experience, and the visitor is choosing to leave it.
+
+If the flyover is the *entire* page (a one-screen landing piece with nothing after it),
+there is nothing to skip to and the link is noise — but the page still needs `<main>`
+around the mount container, or it has no landmark at all.
+
 For a framework embed (React/Vue/Next.js): call `mountScrollFlyover` inside a
 `useEffect`/`onMounted` against a ref'd container div, and call the returned
 `dispose()` function on unmount to free the renderer/geometries.
@@ -478,6 +524,16 @@ work harder than the AI-video approach:
   framework adaptation.
 - Grep the finished build for `Math.random` (should be zero) and confirm each canvas
   texture generator is called once, not per scene.
+- **Tab through the page from a cold load, with the mouse untouched.** The first stop
+  must be the skip link (Step 6); pressing Enter on it must land focus in `<main>`, and
+  the next Tab must continue from there rather than returning to the rail. Then keep
+  tabbing and confirm the only stops inside the flight are the visible scene's CTA and
+  the rail dots — a stop on a control you cannot see means a panel is painting without
+  being `inert`. Do this before the audit below, not after: it takes twenty seconds and
+  it is the failure a visitor meets first.
+- **Scroll the flight with the keyboard alone** — Page Down/Space with focus on the
+  document body, then again with focus parked on a rail dot. Both must fly. This is the
+  primary interaction of the whole page and nothing automated covers it.
 - **Run an accessibility audit on the HTML overlay** — if an `accessibility-reviewer`
   agent (or equivalent) is available, invoke it against the finished page. Scope it
   correctly: the WebGL canvas itself is not auditable (it's a rendered picture, not
@@ -486,8 +542,11 @@ work harder than the AI-video approach:
   structure, color contrast per Step 4/`production-lessons.md`'s 3D-vs-HTML color
   note), the CTA and route-rail buttons (44×44px targets, `aria-label`s, real
   `<button>` elements — Step 5), the crawlable SEO block (semantic tags, not just
-  present but structured as real headings/paragraphs — this Step), and the
-  `prefers-reduced-motion` fallback (content fully readable, not just animation-free).
+  present but structured as real headings/paragraphs — this Step), the
+  `prefers-reduced-motion` fallback (content fully readable, not just animation-free),
+  and **the page shell you wrote around the mount container** — the skip link and the
+  `<main>` landmark from Step 6, which is the half of the page the engine has no say
+  over and therefore the half an audit most often finds empty.
   Tell the agent explicitly to skip the canvas and focus there; feeding it a page
   that's "mostly a `<canvas>`" without that scoping wastes the pass on a false
   negative. Treat its findings the same as any other QA failure — fix before calling

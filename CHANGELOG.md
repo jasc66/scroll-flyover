@@ -11,6 +11,74 @@ the `bin` installer. Builds that
 Claude Code generates through `SKILL.md` vendor a frozen copy of the engine, so they
 are unaffected by upgrades here until they are regenerated.
 
+## [1.7.0] - 2026-09-10
+
+Two defects found the same way 1.5.1's were — by running an accessibility audit, this
+time against a project built from `SKILL.md` rather than against the engine. That
+project is a hand-written React reimplementation of these ideas, so none of its findings
+were engine bugs. Three of them described the *pattern* accurately enough to check here,
+and two turned out to be real and unfixed in this engine.
+
+### Added
+
+- **The flight announces where it has arrived (WCAG 4.1.3, Status Messages).** A polite,
+  atomic live region in the overlay speaks the scene the flight settles on. 1.5.1 gave
+  the rail `aria-current`, which answers the question only for someone who has tabbed to
+  the rail and gone looking — but scrolling is how this thing is driven, and a visitor
+  moving through it with Page Down, a wheel or a thumb crossed every scene without one
+  word of it reaching them.
+
+  The message waits **250ms for the scrolling to stop**, because a scene boundary is
+  crossed on the way past it: a fast scroll through six scenes crosses five in under a
+  second, and announcing each would queue six messages a screen reader then reads out in
+  full, long after the visitor stopped. It is also silent on load — whatever scene the
+  page opens on is not a change, and announcing it would talk over the page's own load
+  and over a deep link's landing position.
+
+  The string is `labels.sceneAnnouncement(index, total, title)`, English by default like
+  the other two, and validated like them. Keep the position in any override: "3 of 6" is
+  the part that answers "where am I".
+
+- **A focus ring the engine paints itself (WCAG 2.4.7 / 1.4.11).** The CTA and the rail
+  dots had no focus styling at all, so they fell back to the browser's own thin outline —
+  over a live WebGL scene, picked per build for how it looks lit and free to be
+  near-white in one frame and near-black in the next. No single ring colour holds 3:1
+  against that, so the ring is two: a light inner outline wrapped in a dark outer band,
+  which always has one half contrasting whatever it lands on. Themable as the pair
+  `--sf-focus-ring` / `--sf-focus-ring-shadow`.
+
+  This is the engine's first `<style>` element — `:focus-visible` is a selector, and the
+  distinction it draws is the whole point. Painting on plain `:focus` instead, which is
+  all an inline style could express, would ring every rail dot a mouse taps. It lives
+  inside the pinned wrapper, so `dispose()` takes it away with everything else.
+
+  **If you already style focus on these controls,** note that `.sf-focusable:focus-visible`
+  outranks a bare `:focus-visible` or `button:focus-visible` rule of yours. Retheme
+  through the two variables, or outrank it back with a more specific selector.
+
+- `SKILL.md` Step 6 now tells builders to give the page a **skip link and a `<main>`
+  landmark**, with the markup and the two details that are easy to get wrong
+  (`tabindex="-1"` on the target; the link must precede the mount container in the DOM).
+  This is the one accessibility defect a flyover has by construction — the container is
+  several viewports of scroll plus a tab stop per scene, standing between a keyboard
+  visitor and everything below the hero (WCAG 2.4.1, Bypass Blocks) — and the engine
+  cannot fix it from inside, because the thing worth skipping *to* lives outside the
+  container it was handed. Step 8 gained the two manual passes that catch it: tab from a
+  cold load, and fly the whole thing with Page Down alone.
+
+### Changed
+
+- `references/index-template.html` wraps its mount container in `<main>`, so the markup
+  builders copy models the guidance above instead of contradicting it. No skip link
+  there on purpose: the flyover is that page's entire content, so there is nothing to
+  skip to — the comment in the template says when to add one.
+
+### Notes
+
+- `npm run qa:a11y` went 23 → 38 assertions. Rendering is unchanged: the reproducibility
+  harness still reports byte-identical frames across reloads — the live region is clipped
+  to 1px and the ring paints only on keyboard focus.
+
 ## [1.6.0] - 2026-09-10
 
 The item 1.5.1 left open, decided and closed — plus the defect that had to be fixed
