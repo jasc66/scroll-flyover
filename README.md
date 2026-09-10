@@ -32,6 +32,16 @@ Six sections, one continuous camera flight, no cuts:
 (host-page CSS traps, pause-state bugs, look-at sign errors) that the original design
 didn't anticipate.
 
+A second real build: [**TechInsight →**](https://blog-tecno.vercel.app/) — a tech/science
+news blog with a dark green tunnel flight through geometric shapes, landing on section
+cards for each part of the site:
+
+|     |     |
+| --- | --- |
+| ![Hero](examples/blog-tecno/01-hero.png) | ![Noticias](examples/blog-tecno/02-noticias.png) |
+| ![Boletines](examples/blog-tecno/03-boletines.png) | ![Foro](examples/blog-tecno/04-foro.png) |
+| ![Explora el contenido](examples/blog-tecno/05-articulos-explora.png) |     |
+
 ## Gallery: four more builds, four archetypes
 
 Generated with this skill to demonstrate it isn't tuned to one subject or one camera
