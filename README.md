@@ -285,6 +285,7 @@ from.
 ```bash
 npm test          # unit tests — pure logic, fast, no browser
 npm run qa        # renders references/index-template.html in Chromium, compares reloads
+npm run qa:a11y   # drives the overlay by keyboard, checks focus/ARIA/button defaults
 npm run serve     # static server, to open the template by hand
 npm run check     # what CI runs, minus the browser
 ```

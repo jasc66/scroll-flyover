@@ -1,6 +1,6 @@
 {
   "name": "scroll-flyover",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Claude Code skill + Three.js/WebGL engine for cinematic, scroll-driven fly-through landing pages — no AI image/video generation, zero per-build cost.",
   "type": "module",
   "main": "./references/scrub-engine.js",
@@ -16,6 +16,7 @@
   "scripts": {
     "test": "node --test",
     "qa": "node scripts/qa.mjs",
+    "qa:a11y": "node scripts/a11y-check.mjs",
     "serve": "node scripts/serve.mjs",
     "check:package": "node scripts/check-package.mjs",
     "check": "node --check bin/install.js && node --test && node scripts/check-package.mjs"

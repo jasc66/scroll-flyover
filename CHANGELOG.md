@@ -11,6 +11,68 @@ the `bin` installer. Builds that
 Claude Code generates through `SKILL.md` vendor a frozen copy of the engine, so they
 are unaffected by upgrades here until they are regenerated.
 
+## [1.5.1] - 2026-09-10
+
+Accessibility fixes in the copy overlay and route rail, found by running a WCAG 2.2
+audit against the engine's own DOM — something no release had done before. 1.5.0's unit
+suite caught a contrast bug precisely because contrast is measurable in isolation; every
+defect below is a DOM behaviour it had no way to see.
+
+All three are additive, and that is measured rather than asserted: the rendered frame of
+`references/index-template.html` at 1440x900 is **byte-for-byte identical** before and
+after, compared through the same reproducibility harness that proves the render is
+deterministic in the first place.
+
+### Fixed
+
+- **Hidden scene panels stayed focusable, announced, and clickable.**
+  `updateCopyVisibility` faded inactive panels with `opacity: 0` and nothing else, which
+  hides a panel from sight alone — it keeps its place in the tab order, in the
+  accessibility tree, and in hit-testing. Every panel also shares the same
+  `left`/`right`/`bottom` with no `z-index`, so they stack in DOM order and the *last*
+  scene's invisible CTA sat on top of every earlier scene's visible one.
+
+  Measured on `references/index-template.html` at 1440x900: **3 tab stops landed inside
+  an invisible panel before, 0 after**, and a mouse click on a visible CTA could be
+  intercepted by a hidden one. Panels are now `inert` whenever they are not visible —
+  one property that closes focus, the accessibility tree and pointer targeting at once,
+  and which overrides the CTA's own inline `pointer-events: auto`. Panels are also born
+  inert, since `frame()` skips its body while the container is off-screen and would
+  otherwise leave a below-the-fold flyover's CTAs tabbable.
+
+- **The route rail never told assistive tech which scene was active.** `updateRail`
+  recoloured and scaled the dot `<span>`, but the `map` building the rail returned only
+  that span and discarded its `<button>`, so no state could be set on the control
+  itself. Colour and scale are not information a screen reader receives. The buttons are
+  now retained alongside their dots and carry `aria-current`, verified to move as the
+  visitor scrolls.
+
+- **Both buttons defaulted to `type="submit"`.** Neither the CTA nor the rail buttons
+  set a `type`, and a `<button>` without one submits. This engine is dropped into host
+  pages it does not control, so a landing page that wraps the hero in a `<form>` — an
+  adjacent signup form being the ordinary case — submitted that form on every rail tap.
+  **Reproduced, not theorised**: wrapping the mount point in a `<form>` and tapping a
+  rail dot fired `submit` before the fix and does not after. Both are now
+  `type="button"`.
+
+### Added
+
+- **`npm run qa:a11y`** (`scripts/a11y-check.mjs`), running in CI alongside the
+  reproducibility QA: drives the real template in Chromium and asserts that `inert`
+  tracks visibility exactly, that no focus lands inside a hidden panel, that exactly one
+  rail button is `aria-current`, and that a host `<form>` survives a rail tap.
+
+### Known, not addressed
+
+- `seoBlock` duplicates every scene's copy for screen readers, so the active scene is
+  announced twice — once from the live overlay and once from the hidden block. Now that
+  inactive panels are `inert`, the overlay exposes only the current scene, which reduces
+  but does not remove the overlap. The fix is a genuine design choice — whether the
+  linear block or the visual overlay is the canonical surface for assistive tech — and
+  is deliberately left for a considered decision rather than settled here. The comment
+  above `seoBlock` also still claims it serves visitors with JS disabled, which it
+  cannot: it is created by `document.createElement`.
+
 ## [1.5.0] - 2026-09-09
 
 Verification moves into this repo, and starts covering the engine rather than the

@@ -509,8 +509,13 @@ export function mountScrollFlyover(container, config) {
       <h2 style="font-size:${cssVar('titleSize')};margin:0.3em 0;font-weight:700">${escapeHtml(sceneCfg.title || '')}</h2>
       <p style="font-size:${cssVar('bodySize')};line-height:1.5;opacity:0.9">${escapeHtml(sceneCfg.body || '')}</p>
       ${(sceneCfg.tags || []).map(t => `<span style="display:inline-block;margin:0.3em 0.4em 0 0;padding:0.2em 0.7em;border:1px solid ${cssVar('tagBorder')};border-radius:999px;font-size:0.8rem">${escapeHtml(t)}</span>`).join('')}
-      ${sceneCfg.cta ? `<div style="margin-top:1em"><button style="pointer-events:auto;min-height:44px;min-width:44px;padding:0.6em 1.4em;border:none;border-radius:${cssVar('ctaRadius')};background:${cssVar('ctaBg', escapeHtml(accent))};color:${cssVar('ctaTextColor', ctaTextColor)};font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(sceneCfg.cta)}</button></div>` : ''}
+      ${sceneCfg.cta ? `<div style="margin-top:1em"><button type="button" style="pointer-events:auto;min-height:44px;min-width:44px;padding:0.6em 1.4em;border:none;border-radius:${cssVar('ctaRadius')};background:${cssVar('ctaBg', escapeHtml(accent))};color:${cssVar('ctaTextColor', ctaTextColor)};font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(sceneCfg.cta)}</button></div>` : ''}
     `;
+    // Panels are born hidden (opacity: 0 above), so they are born inert too. Leaving
+    // this to the first updateCopyVisibility would leave a gap: frame() skips its body
+    // entirely while the container is off-screen, so a flyover further down the page
+    // would keep every one of its CTAs in the tab order until it scrolled into view.
+    el.inert = true;
     overlay.appendChild(el);
     return el;
   });
@@ -529,6 +534,11 @@ export function mountScrollFlyover(container, config) {
   });
   const railDots = scenes.map((_, i) => {
     const hit = document.createElement('button');
+    // Without this a <button> defaults to type="submit". The engine is dropped into
+    // host pages it does not control, and a landing page that wraps the hero in a
+    // <form> (an adjacent signup form is the common case) would submit that form every
+    // time a visitor taps a rail dot.
+    hit.type = 'button';
     hit.setAttribute('aria-label', text.goToScene(i + 1, scenes.length));
     Object.assign(hit.style, {
       width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -546,16 +556,22 @@ export function mountScrollFlyover(container, config) {
       window.scrollTo({ top: container.offsetTop + targetT * total, behavior: reducedMotion ? 'auto' : 'smooth' });
     });
     rail.appendChild(hit);
-    return dot;
+    // The button is kept alongside its dot, not discarded: updateRail below has to set
+    // state on the button itself, and only the <span> used to survive this map.
+    return { hit, dot };
   });
   overlay.appendChild(rail);
 
   function updateRail(t) {
     const active = Math.min(scenes.length - 1, Math.floor(t * scenes.length));
-    railDots.forEach((dot, i) => {
+    railDots.forEach(({ hit, dot }, i) => {
       const isActive = i === active;
       dot.style.background = isActive ? cssVar('railDotActive') : cssVar('railDot');
       dot.style.transform = isActive ? 'scale(1.4)' : 'scale(1)';
+      // The colour and scale above say "you are here" to sighted visitors only. Without
+      // aria-current the rail is, to a screen reader, a list of identical destinations
+      // with no indication of which one the flight is currently at.
+      hit.setAttribute('aria-current', isActive ? 'true' : 'false');
     });
   }
 
@@ -641,7 +657,21 @@ export function mountScrollFlyover(container, config) {
     const halfWidth = (0.5 / scenes.length) * 0.9;
     sectionEls.forEach((el, i) => {
       const dist = Math.abs(t - dwellCenters[i]);
-      el.style.opacity = dist < halfWidth ? '1' : '0';
+      const isVisible = dist < halfWidth;
+      el.style.opacity = isVisible ? '1' : '0';
+      // `opacity: 0` hides a panel from sight and from nothing else: it stays in the tab
+      // order, stays in the accessibility tree, and still answers clicks. Since every
+      // panel shares the same left/right/bottom and none sets a z-index, they stack in
+      // DOM order — so the LAST scene's invisible CTA sat on top of every earlier
+      // scene's visible one, and a visitor clicking the button they could see could
+      // activate a different scene's button instead. Keyboard visitors tabbed through
+      // one invisible CTA per scene before reaching the rail.
+      //
+      // `inert` is the one property that closes all three holes at once — focus, the
+      // accessibility tree, and hit-testing — and it beats the CTA's own inline
+      // `pointer-events: auto`, which a parent `pointer-events: none` does not. Purely
+      // additive: the opacity transition and every painted pixel are unchanged.
+      el.inert = !isVisible;
     });
   }
 
