@@ -106,6 +106,105 @@ console.log(`  after scrolling to 80%: [${railAfter.join(', ')}]`);
 check('the active rail button moved', railAfter.join() !== railState.join(),
   `${railState.join()} -> ${railAfter.join()}`);
 
+// From here on the second scene is the one on screen — it is the one carrying a CTA.
+await page.evaluate(() => {
+  const c = document.getElementById('world');
+  const total = c.offsetHeight - window.innerHeight;
+  window.scrollTo(0, c.offsetTop + 0.75 * total); // dwell centre of scene 2 of 2
+});
+await page.waitForTimeout(1200);
+
+console.log('\n=== 4) the CTA has somewhere to go, and is the element that goes there ===');
+const cta = await page.evaluate(() => {
+  const panel = [...document.querySelectorAll('.sf-section')].find((p) => p.style.opacity === '1');
+  const el = panel && panel.querySelector('a, button');
+  if (!el) return null;
+  return {
+    tag: el.tagName, href: el.getAttribute('href'), text: el.textContent.trim(),
+    ariaLabel: el.getAttribute('aria-label'), tabIndex: el.tabIndex,
+    inAriaHidden: !!el.closest('[aria-hidden="true"]'),
+    height: Math.round(el.getBoundingClientRect().height),
+    width: Math.round(el.getBoundingClientRect().width),
+  };
+});
+console.log(`  ${JSON.stringify(cta)}`);
+check('the visible scene renders a CTA', cta !== null);
+// Before 1.6.0 this was a <button> with no handler and no href: it looked like the
+// page's primary action and did nothing at all when pressed.
+check('a CTA with an href is an <a>, not a <button>', cta?.tag === 'A' && !!cta.href, `${cta?.tag} href=${cta?.href}`);
+check('the CTA is NOT inside an aria-hidden subtree', cta?.inAriaHidden === false,
+  'aria-hidden over a focusable control is a tab stop assistive tech cannot name');
+check('the CTA is in the tab order', cta?.tabIndex === 0);
+// The copy around it is aria-hidden, so the label alone would reach a screen reader
+// as "Empezar", with nothing to say what it starts.
+check('the accessible name names the scene', !!cta?.ariaLabel && cta.ariaLabel !== cta.text, cta?.ariaLabel);
+// WCAG 2.5.3: speaking the visible label must still activate the control.
+check('the accessible name begins with the visible label (WCAG 2.5.3)',
+  !!cta?.ariaLabel && cta.ariaLabel.startsWith(cta.text));
+// WCAG 2.5.8: a <button> is border-box and an <a> is not, so an unstated box-sizing
+// made the same 44px rule produce a 44px button and a 60px link.
+check('the CTA is at least a 44x44 tap target', (cta?.height ?? 0) >= 44 && (cta?.width ?? 0) >= 44,
+  `${cta?.width}x${cta?.height}`);
+
+console.log('\n=== 5) one heading per scene in the accessibility tree, not two ===');
+// The decision this asserts: the linear block is the content, the overlay is the
+// presentation. Heading navigation is why — it is how a screen reader user moves
+// through a long page, and only the block can offer headings in reading order
+// without scrubbing a 3D flight to reach them. Two exposed surfaces meant every
+// scene was announced twice and the heading list had two competing copies of it.
+const headings = await page.evaluate(() => {
+  const all = [...document.querySelectorAll('h2')];
+  const exposed = all.filter((h) => !h.closest('[aria-hidden="true"]') && !h.closest('[inert]'));
+  return {
+    total: all.length,
+    exposed: exposed.map((h) => ({ text: h.textContent.trim(), inBlock: !!h.closest('[data-sf-seo]') })),
+  };
+});
+const sceneCount = await page.$$eval('.sf-section', (els) => els.length);
+console.log(`  ${headings.total} <h2> in the DOM, ${headings.exposed.length} exposed: ` +
+  headings.exposed.map((h) => `"${h.text}"${h.inBlock ? ' [block]' : ' [overlay]'}`).join(', '));
+check('exactly one exposed heading per scene', headings.exposed.length === sceneCount,
+  `${headings.exposed.length} exposed for ${sceneCount} scenes`);
+check('every exposed heading comes from the linear content block',
+  headings.exposed.every((h) => h.inBlock));
+check('no scene title is exposed twice',
+  new Set(headings.exposed.map((h) => h.text)).size === headings.exposed.length);
+
+console.log('\n=== 5b) the same, read off Chromium\'s real accessibility tree ===');
+// Not the DOM heuristic above: the tree the browser actually hands assistive tech.
+// Read over CDP rather than through Playwright's own snapshot: page.accessibility was
+// removed in Playwright 1.5x, and Accessibility.getFullAXTree is the browser's real
+// tree either way — including the `ignored` flag that says what aria-hidden removed.
+const cdp = await page.context().newCDPSession(page);
+await cdp.send('Accessibility.enable');
+const { nodes: axNodes } = await cdp.send('Accessibility.getFullAXTree');
+const axHeadings = axNodes
+  .filter((n) => n.role?.value === 'heading' && n.ignored !== true)
+  .map((n) => n.name?.value ?? '');
+console.log(`  headings in the a11y tree: ${JSON.stringify(axHeadings)}`);
+check('the a11y tree holds one heading per scene', axHeadings.length === sceneCount,
+  `${axHeadings.length} heading(s) for ${sceneCount} scenes`);
+check('no heading is announced twice',
+  new Set(axHeadings).size === axHeadings.length, axHeadings.join(' | '));
+
+console.log('\n=== 6) the content block is read before the visual layer ===');
+const order = await page.evaluate(() => {
+  const block = document.querySelector('[data-sf-seo]');
+  const pin = document.querySelector('.sf-pin');
+  if (!block || !pin) return null;
+  return {
+    blockFirst: !!(block.compareDocumentPosition(pin) & Node.DOCUMENT_POSITION_FOLLOWING),
+    blockSections: block.querySelectorAll('section').length,
+    blockHasControls: block.querySelectorAll('a, button, input, [tabindex]').length,
+  };
+});
+console.log(`  ${JSON.stringify(order)}`);
+check('the linear block precedes the canvas in the DOM', order?.blockFirst === true);
+check('the block carries one section per scene', order?.blockSections === sceneCount);
+// A control in a 1px clipped block is a tab stop with nothing on screen to show it
+// has focus. The rail is how assistive tech reaches a scene's button instead.
+check('the block holds no focusable controls', order?.blockHasControls === 0);
+
 await browser.close();
 server.close();
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

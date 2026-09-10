@@ -124,3 +124,68 @@ test('an unrecognised enum warns instead of throwing', () => {
   assert.match(warnings[0], /config\.performance should be 'rich' or 'light'/);
   assert.match(warnings[1], /config\.cameraFeel should be 'swoop' or 'glide'/);
 });
+
+// --- the CTA's destination (1.6.0) -----------------------------------------
+// Up to 1.5.1 a `cta` string painted a <button> with no handler, no href and no
+// documented way to attach one. These cover the two ways to give it something to do,
+// and the one case that is warned about rather than thrown on.
+const ctaScene = (extra) => ({ ...validScene, cta: 'Start', ...extra });
+
+test('a CTA cannot be a link and a button at the same time', () => {
+  // Which one is set decides which ELEMENT is rendered, so "both" has no rendering.
+  expectRejection(fakeContainer(), validConfig({ scenes: [ctaScene({ ctaHref: '/signup', onCta: () => {} })] }),
+    /sets both ctaHref and onCta — pick one/);
+});
+
+test('a CTA destination must be the shape it claims to be', () => {
+  expectRejection(fakeContainer(), validConfig({ scenes: [ctaScene({ ctaHref: '' })] }), /ctaHref must be a non-empty URL string/);
+  expectRejection(fakeContainer(), validConfig({ scenes: [ctaScene({ ctaHref: '   ' })] }), /ctaHref must be a non-empty URL string/);
+  expectRejection(fakeContainer(), validConfig({ scenes: [ctaScene({ ctaHref: 42 })] }), /ctaHref must be.*got a number/s);
+  expectRejection(fakeContainer(), validConfig({ scenes: [ctaScene({ onCta: 'go()' })] }), /onCta must be a function.*got a string/s);
+});
+
+test('a destination with no label has nothing to render', () => {
+  // The label is both the visible text and the accessible name.
+  expectRejection(fakeContainer(), validConfig({ scenes: [{ ...validScene, ctaHref: '/signup' }] }),
+    /destination but no cta label/);
+  expectRejection(fakeContainer(), validConfig({ scenes: [{ ...validScene, onCta: () => {} }] }),
+    /destination but no cta label/);
+});
+
+test('a CTA with nowhere to go warns and names the scene, rather than throwing', () => {
+  // Throwing here would turn a button that has never worked into a page that renders
+  // nothing at all — a worse failure than the one being fixed.
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (msg) => warnings.push(msg);
+  try {
+    // The mount goes on to fail in Node for want of a DOM; the warning is what matters,
+    // and it is emitted during validation, before any of that is reached.
+    try { mountScrollFlyover(fakeContainer(), validConfig({ scenes: [validScene, ctaScene()] })); } catch { /* no DOM in Node */ }
+  } finally {
+    console.warn = realWarn;
+  }
+  assert.equal(warnings.length, 1, `expected exactly one warning, got ${warnings.length}`);
+  assert.match(warnings[0], /^scroll-flyover: config\.scenes\[1\]\.cta is "Start"/);
+  assert.match(warnings[0], /no button is rendered/);
+  assert.match(warnings[0], /ctaHref/);
+  assert.match(warnings[0], /onCta/);
+});
+
+test('a CTA that can act does not warn', () => {
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (msg) => warnings.push(msg);
+  try {
+    try { mountScrollFlyover(fakeContainer(), validConfig({ scenes: [ctaScene({ ctaHref: '/signup' })] })); } catch { /* no DOM in Node */ }
+    try { mountScrollFlyover(fakeContainer(), validConfig({ scenes: [ctaScene({ onCta: () => {} })] })); } catch { /* no DOM in Node */ }
+  } finally {
+    console.warn = realWarn;
+  }
+  assert.deepEqual(warnings, []);
+});
+
+test('the CTA accessible-name label can be overridden, and must be a function', () => {
+  expectRejection(fakeContainer(), validConfig({ labels: { ctaInScene: 'Start — {title}' } }),
+    /labels\.ctaInScene must be a function.*WCAG 2\.5\.3/s);
+});

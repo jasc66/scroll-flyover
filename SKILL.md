@@ -371,7 +371,10 @@ mountScrollFlyover(document.getElementById('world'), {
     { id:'farm', build: buildFarmScene,     // a function returning a THREE.Group — see scene-recipes.md
       eyebrow:'From the hills', title:'It starts on the farm.',
       body:'…', tags:['Single-origin'] },
-    // …one per scene; last may carry a `cta`
+    // …one per scene; the last usually carries the CTA. `cta` is only the LABEL — it
+    // needs a destination or nothing is rendered: `ctaHref: '/signup'` for a link, or
+    // `onCta: (event, { index, scene }) => {…}` for an action that stays on the page.
+    // The destination picks the element (<a> vs <button>), so never set both.
   ],
 });
 ```
@@ -394,10 +397,21 @@ frame for material animations like scrolling water, and skips it under
 `prefers-reduced-motion`.
 
 The engine also emits a **visually-hidden, crawlable HTML block** containing every
-scene's eyebrow/title/body/tags as real semantic markup. A WebGL canvas is invisible
-to search engines, link-preview scrapers, and screen readers in browse mode; this
-block costs nothing at runtime and is why a flyover page can rank and be shared at
-all. Don't strip it when adapting the engine into a framework.
+scene's eyebrow/title/body/tags as real semantic markup, inserted ahead of the canvas.
+A WebGL canvas is invisible to search engines, link-preview scrapers, and screen
+readers in browse mode; this block costs nothing at runtime and is why a flyover page
+can rank and be shared at all. Don't strip it when adapting the engine into a
+framework.
+
+Since 1.6.0 that block is not a duplicate — **it is the content, and the copy overlay
+is a painting of it**, with the overlay's text `aria-hidden` so no scene is announced
+twice. The tie-breaker was heading navigation: jumping by headings is how a screen
+reader user moves through a long page, and only the linear block has its headings in
+reading order and all present at once — the overlay's arrive one at a time, gated on
+scroll position. If you adapt the engine, keep the split in that direction: content in
+the block, controls where they are painted (the CTA is a *sibling* of the aria-hidden
+copy, never inside it — `aria-hidden` over a focusable control leaves a tab stop
+assistive tech cannot name).
 
 For a framework embed (React/Vue/Next.js): call `mountScrollFlyover` inside a
 `useEffect`/`onMounted` against a ref'd container div, and call the returned

@@ -75,6 +75,11 @@ export function escapeHtml(value) {
  */
 const DEFAULT_LABELS = {
   goToScene: (index, total) => `Go to scene ${index} of ${total}`,
+  // The copy surrounding a CTA is aria-hidden since 1.6.0 — it is the painted
+  // duplicate of the linear content block — so the control's own name is the only
+  // context a screen reader gets for it. The name MUST still begin with the visible
+  // label, or speaking that label no longer activates it (WCAG 2.5.3, Label in Name).
+  ctaInScene: (label, title) => (title ? `${label} — ${title}` : label),
 };
 
 /**
@@ -96,6 +101,14 @@ const THEME_VARS = {
   ctaBg: ['--sf-cta-bg', '#e8a33d'],
   ctaTextColor: ['--sf-cta-text-color', '#fff'],
   ctaRadius: ['--sf-cta-radius', '8px'],
+  // Stated rather than inherited, because a <button> and an <a> disagree about it: a
+  // button takes the browser's own control font size (13.3px in Chromium) while an
+  // anchor takes the page's. Since 1.6.0 the CTA is whichever of the two its
+  // destination calls for, so both are pinned to one value. 0.85rem is that value
+  // because it is what the button has always measured — 13.6px against Chromium's
+  // 13.3px — which keeps a release about semantics from quietly resizing every
+  // consumer's primary action. Set it if you want a larger one.
+  ctaFontSize: ['--sf-cta-font-size', '0.85rem'],
   railDot: ['--sf-rail-dot', 'rgba(255,255,255,0.35)'],
   railDotActive: ['--sf-rail-dot-active', '#fff'],
   // Layout, themable for the same reason the colours are: the defaults below are
@@ -160,6 +173,47 @@ function fail(message) {
  * scene builder untouched and so may legitimately carry a vocabulary this file has
  * never heard of.
  */
+/**
+ * The CTA's destination (new in 1.6.0). Before it, a `cta` string painted a <button>
+ * with no handler, no href, and no documented way to attach one: the page's primary
+ * action, dead on arrival. The two ways to give it something to do are deliberately
+ * exclusive, because which one is set also decides which ELEMENT is rendered, and an
+ * element cannot be both a link and a button.
+ *
+ * A `cta` with neither warns rather than throwing. Throwing would turn a button that
+ * has never worked into a page that renders nothing at all — a worse failure than the
+ * one being fixed — so the warning names the scene and the two ways out instead.
+ */
+function validateCta(sceneCfg, i) {
+  const { cta, ctaHref, onCta } = sceneCfg;
+  if (ctaHref !== undefined && onCta !== undefined) {
+    fail(
+      `config.scenes[${i}] sets both ctaHref and onCta — pick one. ` +
+      `ctaHref renders a real <a>: a visitor can open it in a new tab, and a screen reader lists it among the page's links. ` +
+      `onCta renders a <button>, for an action that stays on the page. No element is both.`,
+    );
+  }
+  if (ctaHref !== undefined && (typeof ctaHref !== 'string' || !ctaHref.trim())) {
+    fail(`config.scenes[${i}].ctaHref must be a non-empty URL string, got ${typeName(ctaHref)}.`);
+  }
+  if (onCta !== undefined && typeof onCta !== 'function') {
+    fail(`config.scenes[${i}].onCta must be a function (event, { index, scene }) => void, got ${typeName(onCta)}.`);
+  }
+  if ((ctaHref !== undefined || onCta !== undefined) && !cta) {
+    fail(
+      `config.scenes[${i}] gives its CTA a destination but no cta label to put on it. ` +
+      `That label is both the button's visible text and its accessible name, so there is nothing to render without it.`,
+    );
+  }
+  if (cta && ctaHref === undefined && onCta === undefined) {
+    console.warn(
+      `scroll-flyover: config.scenes[${i}].cta is ${JSON.stringify(cta)} but the scene gives it nowhere to go, ` +
+      `so no button is rendered. Add ctaHref: '/signup' for a link, or onCta: (event) => {…} for an in-page action. ` +
+      `Up to 1.5.1 this painted a button that did nothing at all when a visitor pressed it.`,
+    );
+  }
+}
+
 function validateMountArgs(container, config) {
   if (!container || typeof container.appendChild !== 'function') {
     fail(
@@ -209,6 +263,7 @@ function validateMountArgs(container, config) {
         `(materials, textures, { rng, performance, shapeLanguage, palette }) => THREE.Group, got ${typeName(sceneCfg.build)}.`,
       );
     }
+    validateCta(sceneCfg, i);
   });
 
   if (seed !== undefined && !Number.isFinite(seed)) {
@@ -245,6 +300,12 @@ function validateMountArgs(container, config) {
   if (labels !== undefined && labels !== null) {
     if (typeof labels !== 'object' || Array.isArray(labels)) {
       fail(`config.labels must be an object, got ${typeName(labels)}.`);
+    }
+    if (labels.ctaInScene !== undefined && typeof labels.ctaInScene !== 'function') {
+      fail(
+        `config.labels.ctaInScene must be a function (label, title) => string, got ${typeName(labels.ctaInScene)}. ` +
+        `Its result becomes the CTA's accessible name, which has to begin with the visible label (WCAG 2.5.3).`,
+      );
     }
     if (labels.goToScene !== undefined && typeof labels.goToScene !== 'function') {
       fail(
@@ -474,7 +535,7 @@ export function mountScrollFlyover(container, config) {
   Object.assign(overlay.style, { position: 'absolute', inset: '0', pointerEvents: 'none', overflow: 'hidden' });
   pinWrapper.appendChild(overlay); // must live in the sticky wrapper, not container — see above
 
-  const sectionEls = scenes.map((sceneCfg) => {
+  const sectionEls = scenes.map((sceneCfg, sceneIndex) => {
     const el = document.createElement('div');
     el.className = 'sf-section';
     Object.assign(el.style, {
@@ -504,13 +565,71 @@ export function mountScrollFlyover(container, config) {
     });
     const accent = palette.accent || '#e8a33d';
     const ctaTextColor = readableTextColor(accent);
-    el.innerHTML = `
+    // ---- painted copy: presentation, not content --------------------------
+    // Every word below also exists as real, in-flow, semantic HTML in the linear
+    // block this engine inserts AHEAD of the visual layer (see "canonical copy"
+    // further down). Exposing both surfaces meant a screen reader announced each
+    // scene twice, and — worse — put a second competing set of <h2>s in the heading
+    // list, which is the structure a screen reader user actually navigates a long
+    // page by. Only one surface can hold that role, and the linear block is the one
+    // that has structure at all: headings in reading order, available without
+    // scrubbing a WebGL flight to reach them. This one paints them.
+    //
+    // aria-hidden belongs on THIS wrapper and would be a bug one level up, on the
+    // panel: the CTA is a sibling of this element, not a descendant, so it stays in
+    // the accessibility tree and in the tab order. aria-hidden across a focusable
+    // control leaves a tab stop that assistive tech cannot name — the same class of
+    // defect 1.5.1 removed, reintroduced from the other direction.
+    const copy = document.createElement('div');
+    copy.setAttribute('aria-hidden', 'true');
+    copy.innerHTML = `
       ${sceneCfg.eyebrow ? `<div style="letter-spacing:0.1em;text-transform:uppercase;font-size:0.75rem;opacity:0.8">${escapeHtml(sceneCfg.eyebrow)}</div>` : ''}
       <h2 style="font-size:${cssVar('titleSize')};margin:0.3em 0;font-weight:700">${escapeHtml(sceneCfg.title || '')}</h2>
       <p style="font-size:${cssVar('bodySize')};line-height:1.5;opacity:0.9">${escapeHtml(sceneCfg.body || '')}</p>
       ${(sceneCfg.tags || []).map(t => `<span style="display:inline-block;margin:0.3em 0.4em 0 0;padding:0.2em 0.7em;border:1px solid ${cssVar('tagBorder')};border-radius:999px;font-size:0.8rem">${escapeHtml(t)}</span>`).join('')}
-      ${sceneCfg.cta ? `<div style="margin-top:1em"><button type="button" style="pointer-events:auto;min-height:44px;min-width:44px;padding:0.6em 1.4em;border:none;border-radius:${cssVar('ctaRadius')};background:${cssVar('ctaBg', escapeHtml(accent))};color:${cssVar('ctaTextColor', ctaTextColor)};font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(sceneCfg.cta)}</button></div>` : ''}
     `;
+    el.appendChild(copy);
+
+    // ---- CTA: rendered only when it can do something ----------------------
+    // Built as elements rather than markup because the destination picks the tag:
+    // ctaHref is an <a> (openable in a new tab, announced as a link, listed with the
+    // page's links) and onCta is a <button>. A `cta` with neither is not rendered at
+    // all — validateCta above explains why, and warns.
+    if (sceneCfg.cta && (sceneCfg.ctaHref || sceneCfg.onCta)) {
+      const ctaWrap = document.createElement('div');
+      ctaWrap.style.marginTop = '1em';
+      const cta = document.createElement(sceneCfg.ctaHref ? 'a' : 'button');
+      cta.textContent = sceneCfg.cta;
+      if (sceneCfg.ctaHref) {
+        cta.href = sceneCfg.ctaHref;
+      } else {
+        // Same reason as the rail's buttons: a <button> with no type submits, and this
+        // engine is dropped into host pages whose <form>s it does not know about.
+        cta.type = 'button';
+        cta.addEventListener('click', (event) => sceneCfg.onCta(event, { index: sceneIndex, scene: sceneCfg }));
+      }
+      // The copy around it is aria-hidden, so the label is all a screen reader gets:
+      // "Start", with nothing to say what it starts. The accessible name carries the
+      // scene title and still begins with the visible label (WCAG 2.5.3).
+      cta.setAttribute('aria-label', text.ctaInScene(sceneCfg.cta, sceneCfg.title || ''));
+      Object.assign(cta.style, {
+        pointerEvents: 'auto', minHeight: '44px', minWidth: '44px', padding: '0.6em 1.4em',
+        // The 44px minimum is a TAP TARGET (WCAG 2.5.8), so it has to mean the whole
+        // control. A <button> is border-box in every UA stylesheet and an <a> is not,
+        // so leaving this unstated made the same rule produce a 44px button and a 60px
+        // link — measured, on the template's own CTA.
+        boxSizing: 'border-box',
+        border: 'none', borderRadius: cssVar('ctaRadius'),
+        background: cssVar('ctaBg', accent), color: cssVar('ctaTextColor', ctaTextColor),
+        fontFamily: 'inherit', fontSize: cssVar('ctaFontSize'), fontWeight: '600',
+        // Only an <a> needs this one, and only an <a> would be underlined without it;
+        // setting it on both is what keeps the two elements a single visual object.
+        textDecoration: 'none',
+        cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      });
+      ctaWrap.appendChild(cta);
+      el.appendChild(ctaWrap);
+    }
     // Panels are born hidden (opacity: 0 above), so they are born inert too. Leaving
     // this to the first updateCopyVisibility would leave a gap: frame() skips its body
     // entirely while the container is off-screen, so a flyover further down the page
@@ -575,25 +694,42 @@ export function mountScrollFlyover(container, config) {
     });
   }
 
-  // ---- crawlable SEO / no-JS content block --------------------------------
-  // A WebGL page is invisible to crawlers and to anyone with JS disabled. Every
-  // scene's copy also exists here as real, semantic, in-flow HTML — visually hidden
-  // but fully readable by search engines, screen readers in browse mode, and
-  // link-preview scrapers. Costs nothing at runtime.
-  const seoBlock = document.createElement('div');
-  seoBlock.setAttribute('data-sf-seo', '');
-  Object.assign(seoBlock.style, {
+  // ---- canonical copy: the crawlable, linear content block -----------------
+  // A WebGL canvas is nothing at all to a crawler, a link-preview scraper, or a
+  // screen reader. Every scene's copy therefore also exists here as real, in-flow,
+  // semantic HTML: one <section> per scene, each with its heading, in reading order.
+  //
+  // Since 1.6.0 this block is not a duplicate of the overlay — it IS the copy, and
+  // the overlay is a painting of it (the panels' text is aria-hidden). The split
+  // falls this way round because of heading navigation: jumping by headings is how a
+  // screen reader user moves through a long page, and only this block can offer that.
+  // The overlay's headings arrive one at a time, gated on scroll position, and a
+  // heading you have to scrub a 3D flight to reach is not a navigable structure.
+  //
+  // No claim is made here about visitors with JS disabled: this block is built by
+  // document.createElement, so there is no JS-off page for it to serve. It serves
+  // crawlers, which run JS, and assistive tech, which needs the DOM the engine built.
+  //
+  // Inserted BEFORE the visual layer, so the story is what a linear read reaches
+  // first, and after any children the host already had — those are not ours to move.
+  const contentBlock = document.createElement('div');
+  contentBlock.setAttribute('data-sf-seo', '');
+  Object.assign(contentBlock.style, {
     position: 'absolute', width: '1px', height: '1px', overflow: 'hidden',
     clip: 'rect(0 0 0 0)', clipPath: 'inset(50%)', whiteSpace: 'nowrap',
   });
-  seoBlock.innerHTML = scenes.map((s) => `
+  contentBlock.innerHTML = scenes.map((s) => `
     <section>
       ${s.eyebrow ? `<p>${escapeHtml(s.eyebrow)}</p>` : ''}
       <h2>${escapeHtml(s.title || '')}</h2>
       <p>${escapeHtml(s.body || '')}</p>
       ${(s.tags || []).length ? `<ul>${s.tags.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : ''}
     </section>`).join('');
-  container.appendChild(seoBlock);
+  // Deliberately not focusable and deliberately without controls: a CTA duplicated in
+  // here would be a tab stop with nothing on screen to show it has focus, and a second
+  // control competing with the visible one. The rail is how assistive tech reaches a
+  // scene's button — its dots are labelled "Go to scene N of M" and carry aria-current.
+  container.insertBefore(contentBlock, pinWrapper);
 
   // ---- scroll driver: a tall spacer sets total scrollable length -----------
   // This used to be computed once, at mount, and written as fixed pixels — while
@@ -790,7 +926,7 @@ export function mountScrollFlyover(container, config) {
       // Remove only what this engine appended — the host may own other children of
       // `container`, which the previous `innerHTML = ''` destroyed along with them.
       pinWrapper.remove();
-      seoBlock.remove();
+      contentBlock.remove();
       spacer.remove();
       container.style.height = prevInlineHeight;
       container.style.position = prevInlinePosition;

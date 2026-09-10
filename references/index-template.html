@@ -83,7 +83,11 @@
           title: 'Y continúa aquí.',
           body: 'Cada escena es una función que arma un THREE.Group.',
           tags: ['Ejemplo'],
+          // Un `cta` necesita un destino, o no se dibuja: `ctaHref` para un enlace
+          // (se abre en pestaña nueva, el lector de pantalla lo anuncia como enlace)
+          // u `onCta` para una acción que se queda en la página. Reemplazá esta URL.
           cta: 'Empezar',
+          ctaHref: 'https://example.com/empezar',
         },
       ],
     });

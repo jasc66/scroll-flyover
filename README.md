@@ -121,9 +121,23 @@ handle.dispose(); // on SPA route change / unmount
   reproducible. `references/scene-recipes.md` has copy-pasteable builders.
 - **Scene copy is escaped, not interpolated as HTML** — safe to feed from a CMS, but
   markup in `title`/`body`/`tags` renders literally rather than as tags.
-- The engine's own UI strings (the route rail's `aria-label`s) default to English.
-  Override them to match the host page's language:
-  ``labels: { goToScene: (i, total) => `Ir a la escena ${i} de ${total}` }``
+- **A CTA needs a destination (since 1.6.0).** A scene's `cta` is only the label; give
+  it `ctaHref` for a link or `onCta` for an in-page action, and the engine renders the
+  element that matches — a real `<a>` for the first, a `<button type="button">` for the
+  second. Setting both is a config error, since no element is both. A `cta` with
+  neither warns and renders nothing: up to 1.5.1 it painted a button that did nothing
+  at all when pressed.
+
+  ```js
+  { title: 'Arrival', build: buildArrival, cta: 'Get started', ctaHref: '/signup' }
+  { title: 'Arrival', build: buildArrival, cta: 'Play',        onCta: (event, { index, scene }) => {…} }
+  ```
+- The engine's own UI strings (the route rail's `aria-label`s, and the CTA's accessible
+  name) default to English. Override them to match the host page's language:
+  ``labels: { goToScene: (i, total) => `Ir a la escena ${i} de ${total}` }``, and
+  ``labels: { ctaInScene: (label, title) => `${label} — ${title}` }``. A `ctaInScene`
+  override must keep the visible label at the front, or speaking that label no longer
+  activates the control (WCAG 2.5.3, Label in Name).
 - **Theming (opt-in, since 1.2.0):** the copy overlay's colors, blur, and radii are
   inline styles whose *values* are `var(--sf-x, <default>)`, not literals — set any of
   these as a CSS custom property on `container` (or an ancestor, they inherit like
@@ -141,6 +155,7 @@ handle.dispose(); // on SPA route change / unmount
   | `--sf-cta-bg` | the scene's palette accent | CTA button background |
   | `--sf-cta-text-color` | computed for contrast against the accent | CTA button text |
   | `--sf-cta-radius` | `8px` | CTA button corner radius |
+  | `--sf-cta-font-size` | `0.85rem` | CTA label size — stated since 1.6.0, because a `<button>` and an `<a>` disagree about the default |
   | `--sf-rail-dot` | `rgba(255,255,255,0.35)` | route rail dot (inactive) |
   | `--sf-rail-dot-active` | `#fff` | route rail dot (active) |
   | `--sf-rail-gutter` | `74px` | width reserved on the right so copy clears the rail |
@@ -173,7 +188,9 @@ handle.dispose(); // on SPA route change / unmount
   the CTA's text color is picked by measuring its luminance), every scene's `build`
   function and its return value, `seed` (a non-numeric seed silently collapses to `0`,
   making every such build identical), `dwellWeight` (`0` divides by zero and renders
-  nothing), `layout`'s return shape, `photos`, and `labels.goToScene`. Unrecognised
+  nothing), `layout`'s return shape, `photos`, each scene's CTA (`ctaHref`/`onCta` are
+  mutually exclusive, and a destination with no `cta` label has nothing to render), and
+  `labels.goToScene`/`labels.ctaInScene`. Unrecognised
   `performance`/`cameraFeel` values warn rather than throw, since they still render a
   correct page. `shapeLanguage` is deliberately *not* validated — it is passed straight
   through to your scene builders, so it may carry a vocabulary of your own.
@@ -301,6 +318,37 @@ quietly wrong. Writing them surfaced exactly that — see 1.5.0 in
 [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Accessibility QA
+
+### Which surface is the content (since 1.6.0)
+
+A flyover says everything twice: once painted over the canvas in the copy overlay, and
+once as real in-flow HTML in the crawlable block. Both used to be exposed to assistive
+tech, so every scene was announced twice and the page's heading list held two competing
+copies of it.
+
+**The linear block is the content. The overlay is a painting of it.** The overlay's
+copy is `aria-hidden`; the block is what a screen reader reads, and the engine now
+inserts it *before* the visual layer so a linear read reaches the story first.
+
+The tie-breaker is heading navigation. Jumping between headings is how a screen reader
+user actually moves through a long page, and only the block can offer that: its
+headings sit in reading order and are all present at once. The overlay's arrive one at
+a time, gated on scroll position — and a heading you have to scrub a 3D flight to
+reach is not a structure you can navigate by. So the block wins the role, and
+`npm run qa:a11y` asserts it against Chromium's own accessibility tree: one heading per
+scene, none of them announced twice.
+
+Two consequences worth knowing:
+
+- **Controls stay where they are painted.** The CTA is a sibling of the aria-hidden
+  copy, not a descendant of it, so it keeps its place in the accessibility tree and the
+  tab order — `aria-hidden` over a focusable control leaves a tab stop that assistive
+  tech cannot name. Because the words around it are hidden, its accessible name carries
+  the scene title (`labels.ctaInScene`).
+- **The block holds no controls.** A button inside a 1px clipped block would be a tab
+  stop with nothing on screen to show it has focus. Assistive tech reaches a scene's
+  CTA the same way a sighted visitor does — through the route rail, whose dots are
+  labelled "Go to scene N of M" and carry `aria-current`.
 
 The final QA step (SKILL.md Step 8) invokes an `accessibility-reviewer`-style agent
 against the finished build's HTML overlay — the WebGL canvas itself is out of scope

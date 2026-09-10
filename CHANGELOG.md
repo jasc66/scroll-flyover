@@ -11,6 +11,106 @@ the `bin` installer. Builds that
 Claude Code generates through `SKILL.md` vendor a frozen copy of the engine, so they
 are unaffected by upgrades here until they are regenerated.
 
+## [1.6.0] - 2026-09-10
+
+The item 1.5.1 left open, decided and closed — plus the defect that had to be fixed
+before it could be. Both are about the same question: a flyover says everything twice,
+and until now both copies were live to assistive tech.
+
+**The decision: the linear block is the content, the copy overlay is a painting of it.**
+The tie-breaker is heading navigation. Jumping between headings is how a screen reader
+user actually moves through a long page, and only the linear block can offer it — its
+headings sit in reading order and are all present at once, while the overlay's arrive
+one at a time, gated on scroll position. A heading you have to scrub a 3D flight to
+reach is not a structure anyone can navigate by.
+
+**The order was forced.** Hiding the overlay's copy from assistive tech is one
+attribute, but `aria-hidden` across a focusable control leaves a tab stop that
+assistive tech cannot name — the same class of defect 1.5.1 had just removed, arriving
+from the other direction. The overlay's one focusable child was the CTA, and the CTA
+turned out to be a dead button. So it went first.
+
+### Fixed
+
+- **The CTA was a button that could not do anything.** A scene's `cta` string painted a
+  `<button>` with no click handler, no `href`, and no documented way to attach one —
+  searched for: `SKILL.md` never mentions wiring it, and the README only documented its
+  colors. It looked like the page's primary action and did nothing at all when pressed.
+
+  `cta` is now the label only, and needs a destination: `ctaHref` for a link or
+  `onCta(event, { index, scene })` for an in-page action. The destination also picks
+  the element, which is the part that matters beyond the dead click — `ctaHref` renders
+  a real `<a>`, so it can be opened in a new tab, previewed in the status bar, and
+  reached through the links list a screen reader offers. Setting both is a config
+  error; no element is both. A `cta` with neither warns, naming the scene and both
+  ways out, and renders nothing. It warns rather than throwing on purpose: throwing
+  would turn a button that never worked into a page that renders nothing at all.
+
+- **Every scene was announced twice, and the heading list held two copies of it.**
+  Measured on `references/index-template.html` at 1440x900, parked at the second
+  scene's dwell centre, reading Chromium's own accessibility tree over CDP rather than
+  the DOM: **`["Todo empieza aquí.", "Y continúa aquí.", "Y continúa aquí."]` before —
+  three headings for two scenes — and two after.** (Three rather than four because
+  1.5.1's `inert` already removed the inactive panel's; that release predicted exactly
+  this residue and left it open.)
+
+  The overlay's copy is now wrapped in one `aria-hidden` element, and the linear block
+  is inserted *before* the visual layer instead of after it, so a linear read reaches
+  the story first. The CTA is a **sibling** of that wrapper, never inside it, which is
+  what keeps it in the accessibility tree and in the tab order.
+
+- **`min-height: 44px` meant two different sizes on two elements.** Found while making
+  a link CTA and a button CTA the same object: a `<button>` is `border-box` in every UA
+  stylesheet and an `<a>` is not, so the same rule produced a 44px button and a **60px**
+  link — measured on the template's own CTA. The 44px floor is a tap target (WCAG
+  2.5.8), so it has to mean the whole control; `box-sizing` is now stated.
+
+- **The comment above the block claimed it served visitors with JS disabled**, which it
+  cannot: it is built by `document.createElement`. Flagged in 1.5.1, corrected here.
+
+### Added
+
+- **`ctaHref` and `onCta` on a scene**, with fail-fast validation for both, and
+  `labels.ctaInScene` for the CTA's accessible name. That name is needed because the
+  copy around the control is now `aria-hidden`, leaving the visible label as the only
+  thing a screen reader gets — "Empezar", with nothing to say what it starts. It
+  defaults to ``(label, title) => `${label} — ${title}` `` and must keep the visible
+  label at the front, or speaking that label no longer activates the control (WCAG
+  2.5.3, Label in Name).
+- **`--sf-cta-font-size`** (`0.85rem`), because a `<button>` takes the browser's own
+  control font size and an `<a>` takes the page's; with the CTA now being either one,
+  the value is stated instead of inherited.
+- **Fifteen new assertions in `npm run qa:a11y`** (8 before, 23 now), covering the CTA's
+  element and destination, its accessible name and 44px tap target, one heading per
+  scene in the browser's real accessibility tree, and the content block's position and
+  freedom from controls. Run against 1.5.1's tree they produce **9 failures**; against
+  this one, none.
+- **Six unit tests** over the CTA validation (46 tests before, 52 now), including that
+  a destination-less `cta` warns exactly once and names its scene rather than throwing.
+
+### Visual change, measured
+
+The CTA's label was the browser's default control font (13.33px Arial in Chromium) and
+is now the overlay's own typeface at `--sf-cta-font-size`. It was kept at 0.85rem —
+13.6px against the old 13.33px — specifically so a release about semantics would not
+quietly resize every consumer's primary action.
+
+What that costs, compared frame to frame at the second scene's dwell centre: **543 of
+1,296,000 pixels differ (0.042%), all of them inside a 74x44 box at (126, 748)** — the
+CTA's label. Every other pixel in the frame is identical, and the reproducibility
+harness still reports three byte-identical reloads at the top of the page.
+
+### Known, not addressed
+
+- A screen reader user reaches a scene's CTA the same way a sighted visitor does — by
+  arriving at that scene, via the route rail's labelled dots. The CTA is deliberately
+  *not* duplicated into the linear block: a control in a 1px clipped block is a tab
+  stop with nothing on screen to show it has focus, and a second control competing with
+  the visible one. The trade is real, and the rail is the mitigation.
+- `qa:a11y` drives the shipped template, which has one CTA on one of two scenes. A
+  build with a CTA on every scene, or with `onCta` instead of `ctaHref`, is covered by
+  the unit tests' validation paths but not by a rendered assertion.
+
 ## [1.5.1] - 2026-09-10
 
 Accessibility fixes in the copy overlay and route rail, found by running a WCAG 2.2
