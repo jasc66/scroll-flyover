@@ -428,6 +428,13 @@ static fallback**: the engine degrades silently between the two, so the same
 description can mean two unrelated problems. The
 [bug report form](.github/ISSUE_TEMPLATE/bug_report.yml) asks for both.
 
+## Author
+
+Built and maintained by **Alonso Salguero C.** —
+[alonso-portafolio-scrollflyover.vercel.app](https://alonso-portafolio-scrollflyover.vercel.app/),
+which is itself a flyover built with this skill (the six screenshots at the top of this
+README are that site) and the build `references/production-lessons.md` comes from.
+
 ## License
 
 MIT

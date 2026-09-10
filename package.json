@@ -43,7 +43,10 @@
   "bugs": {
     "url": "https://github.com/jasc66/scroll-flyover/issues"
   },
-  "author": "Alonso Salguero C.",
+  "author": {
+    "name": "Alonso Salguero C.",
+    "url": "https://alonso-portafolio-scrollflyover.vercel.app/"
+  },
   "license": "MIT",
   "peerDependencies": {
     "three": ">=0.152.0"

@@ -1,8 +1,11 @@
 # Production lessons (from a real build, not a demo)
 
-Everything in this file was learned shipping one real flyover (a spiral-ascent
-portfolio tower embedded in a Next.js/React site with bilingual copy) and cost real
-diagnosis time because nothing in the rest of this skill warned about it. The other
+Everything in this file was learned shipping one real flyover — a spiral-ascent
+portfolio tower embedded in a Next.js/React site with bilingual copy, live at
+[alonso-portafolio-scrollflyover.vercel.app](https://alonso-portafolio-scrollflyover.vercel.app/)
+— and cost real diagnosis time because nothing in the rest of this skill warned about it.
+The build is public on purpose: every trap below can be checked against a page that is
+actually running, rather than taken on trust. The other
 reference files describe the happy path; this one is the list of ways the happy path
 breaks in a real host page. Read it **before** debugging a stuck/black/jerky build —
 check this list before re-deriving the camera math from scratch.

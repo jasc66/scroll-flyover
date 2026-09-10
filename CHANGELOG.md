@@ -100,6 +100,16 @@ What that costs, compared frame to frame at the second scene's dwell centre: **5
 CTA's label. Every other pixel in the frame is identical, and the reproducibility
 harness still reports three byte-identical reloads at the top of the page.
 
+### Docs
+
+- The author's live build, [alonso-portafolio-scrollflyover.vercel.app](https://alonso-portafolio-scrollflyover.vercel.app/),
+  is now referenced where it was doing work but going unnamed: as `package.json`'s
+  `author.url` (so it appears on the npm page), as a README "Author" section, at the
+  head of `references/production-lessons.md` — whose every claim comes from that build,
+  and is now checkable against a running page — and in `SKILL.md`'s Step 1
+  expectation-setting, where one link settles what "stylized low-poly" means faster
+  than a paragraph does.
+
 ### Known, not addressed
 
 - A screen reader user reaches a scene's CTA the same way a sighted visitor does — by

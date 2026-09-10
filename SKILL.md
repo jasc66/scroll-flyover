@@ -31,6 +31,13 @@ The trade-off, stated plainly: procedural/primitive-based visuals read as **styl
 low-poly / geometric / abstract diorama**, not photoreal AI-generated art. Set that
 expectation with the user up front (Step 1).
 
+**Show it rather than describing it.** A finished build of this skill is live at
+[alonso-portafolio-scrollflyover.vercel.app](https://alonso-portafolio-scrollflyover.vercel.app/)
+— a spiral-ascent portfolio tower, six sections, one continuous flight, embedded in a
+bilingual Next.js site. Point the user at it during Step 1: "stylized low-poly" means
+different things to different people, and one link settles the expectation faster than
+a paragraph. It is also the build `references/production-lessons.md` was written from.
+
 **What you generate:** N "island" scenes (each a self-contained Three.js group built
 from primitives + code-generated textures) → one continuous camera spline that visits
 them in order → a scroll-scrub engine that maps scroll position to a point (and
