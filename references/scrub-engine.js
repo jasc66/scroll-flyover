@@ -23,9 +23,14 @@ const DEFAULT_SPACING = 24;
 /**
  * WCAG relative luminance (sRGB), used to pick a readable text color against an
  * arbitrary hex background rather than assuming one fixed color always works.
+ * Accepts both `#rgb` and `#rrggbb`: the shorthand form used to fall through the
+ * 6-digit path and parse its third channel from an empty string, yielding NaN
+ * luminance — which readableTextColor below silently read as "dark", so `#eee`
+ * got white text on a near-white background.
  */
-function relativeLuminance(hex) {
-  const c = hex.replace('#', '');
+export function relativeLuminance(hex) {
+  let c = String(hex).trim().replace(/^#/, '');
+  if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(c.substring(i, i + 2), 16) / 255);
   const f = (v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
@@ -35,8 +40,15 @@ function relativeLuminance(hex) {
 // below it white text reads better, above it black does. Palettes are 3D-material hexes
 // picked for how they look lit in WebGL, not validated as flat HTML colors (see
 // references/gotchas.md), so a build's accent can land on either side.
-function readableTextColor(bgHex) {
-  return relativeLuminance(bgHex) > 0.179 ? '#111' : '#fff';
+//
+// The dark option is pure black rather than the softer #111 it used to be, because
+// 0.179 is only the crossover for BLACK: #111 is not quite black, so around the
+// crossover it returned 4.12:1 where the constant promised 4.58:1 — under the 4.5:1
+// AA floor this function exists to hold. Either the constant or the color had to move,
+// and moving the color keeps the guarantee provable at every luminance (worst case is
+// now 4.58:1, exactly at the crossover).
+export function readableTextColor(bgHex) {
+  return relativeLuminance(bgHex) > 0.179 ? '#000' : '#fff';
 }
 
 /**
@@ -46,7 +58,7 @@ function readableTextColor(bgHex) {
  * attribute and inject one. Escapes `&` first so the other replacements aren't
  * double-encoded.
  */
-function escapeHtml(value) {
+export function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -123,7 +135,139 @@ export function makeRng(seed = 1) {
   };
 }
 
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+function typeName(value) {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  if (Array.isArray(value)) return 'an array';
+  return `a ${typeof value}`;
+}
+
+function fail(message) {
+  throw new Error(`scroll-flyover: ${message}`);
+}
+
+/**
+ * Fails fast, and in this engine's own words, on the config mistakes that otherwise
+ * surface as something unrecognisable: a Three.js stack trace from deep inside a
+ * constructor, or — worse — no error at all and a page that renders black. Runs before
+ * any DOM or WebGL work on purpose, so the message names the property the caller got
+ * wrong rather than the internal that tripped over it, and so it is reachable from a
+ * plain Node test with no browser.
+ *
+ * Deliberately NOT validated: `shapeLanguage`, which is handed through to every
+ * scene builder untouched and so may legitimately carry a vocabulary this file has
+ * never heard of.
+ */
+function validateMountArgs(container, config) {
+  if (!container || typeof container.appendChild !== 'function') {
+    fail(
+      `mountScrollFlyover(container, config) needs a DOM element as its first argument, got ${typeName(container)}. ` +
+      `If that came from document.querySelector(), it returned null: the element is not in the document yet. ` +
+      `Mount from an effect/onMounted hook, or after DOMContentLoaded.`,
+    );
+  }
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    fail(`config must be an object, got ${typeName(config)}.`);
+  }
+
+  const { palette, scenes, seed, dwellWeight, layout, photos, labels, performance, cameraFeel } = config;
+
+  if (!palette || typeof palette !== 'object' || Array.isArray(palette)) {
+    fail(`config.palette must be an object like { colors: ['#0e1c2b', '#1d3a52'], accent: '#e8a33d' }, got ${typeName(palette)}.`);
+  }
+  if (!Array.isArray(palette.colors) || palette.colors.length === 0) {
+    fail(
+      `config.palette.colors must be a non-empty array of CSS colors, got ${typeName(palette.colors)}. ` +
+      `It is the source of the sky gradient, the fog, and one material per entry, so an empty palette leaves nothing to render with.`,
+    );
+  }
+  palette.colors.forEach((color, i) => {
+    if (typeof color !== 'string' || !color.trim()) {
+      fail(`config.palette.colors[${i}] must be a non-empty CSS color string, got ${typeName(color)}.`);
+    }
+  });
+  if (palette.accent !== undefined && (typeof palette.accent !== 'string' || !HEX_COLOR.test(palette.accent.trim()))) {
+    fail(
+      `config.palette.accent must be a hex color such as '#e8a33d' or '#fc0', got ${typeName(palette.accent)}. ` +
+      `Hex specifically: the CTA's text color is chosen by measuring the accent's WCAG luminance, and a named or ` +
+      `rgb() color has no channels to measure — the button would silently paint unreadable text on itself.`,
+    );
+  }
+
+  if (!Array.isArray(scenes) || scenes.length === 0) {
+    fail(`config.scenes must be a non-empty array — one entry per stop on the flight. Got ${typeName(scenes)}.`);
+  }
+  scenes.forEach((sceneCfg, i) => {
+    if (!sceneCfg || typeof sceneCfg !== 'object' || Array.isArray(sceneCfg)) {
+      fail(`config.scenes[${i}] must be an object, got ${typeName(sceneCfg)}.`);
+    }
+    if (typeof sceneCfg.build !== 'function') {
+      fail(
+        `config.scenes[${i}].build must be a function ` +
+        `(materials, textures, { rng, performance, shapeLanguage, palette }) => THREE.Group, got ${typeName(sceneCfg.build)}.`,
+      );
+    }
+  });
+
+  if (seed !== undefined && !Number.isFinite(seed)) {
+    fail(
+      `config.seed must be a finite number, got ${typeName(seed)}. ` +
+      `The RNG coerces whatever it is given through a bitwise operator, so a non-numeric seed collapses to 0 without ` +
+      `complaining — every build seeded that way would come out identical instead of unique to itself.`,
+    );
+  }
+
+  if (dwellWeight !== undefined && (!Number.isFinite(dwellWeight) || dwellWeight <= 0)) {
+    fail(
+      `config.dwellWeight must be a finite number greater than 0 (2–3 is the useful range), got ${typeName(dwellWeight)}. ` +
+      `At 0 the easing's weights sum to 0, every segment boundary becomes NaN, and the camera is moved to NaN — a page ` +
+      `that renders nothing and reports no error.`,
+    );
+  }
+
+  if (layout !== undefined && layout !== null && typeof layout !== 'function') {
+    fail(`config.layout must be a function (sceneCount) => THREE.Vector3[], got ${typeName(layout)}.`);
+  }
+
+  if (photos !== undefined && photos !== null) {
+    if (typeof photos !== 'object' || Array.isArray(photos)) {
+      fail(`config.photos must be an object mapping names to image URLs, got ${typeName(photos)}.`);
+    }
+    Object.entries(photos).forEach(([key, url]) => {
+      if (typeof url !== 'string' || !url.trim()) {
+        fail(`config.photos[${JSON.stringify(key)}] must be an image URL string, got ${typeName(url)}.`);
+      }
+    });
+  }
+
+  if (labels !== undefined && labels !== null) {
+    if (typeof labels !== 'object' || Array.isArray(labels)) {
+      fail(`config.labels must be an object, got ${typeName(labels)}.`);
+    }
+    if (labels.goToScene !== undefined && typeof labels.goToScene !== 'function') {
+      fail(
+        `config.labels.goToScene must be a function (index, total) => string, got ${typeName(labels.goToScene)}. ` +
+        `It is called once per rail dot, so a fixed string would give every dot the same aria-label.`,
+      );
+    }
+  }
+
+  // Warnings, not errors: an unrecognised value here still renders a correct page, just
+  // a quieter one than the caller asked for, and throwing would break a build that has
+  // been shipping happily with a typo in it.
+  if (performance !== undefined && performance !== 'rich' && performance !== 'light') {
+    console.warn(`scroll-flyover: config.performance should be 'rich' or 'light'; ${JSON.stringify(performance)} behaves as 'light' (no shadows).`);
+  }
+  if (cameraFeel !== undefined && cameraFeel !== 'swoop' && cameraFeel !== 'glide') {
+    console.warn(`scroll-flyover: config.cameraFeel should be 'swoop' or 'glide'; ${JSON.stringify(cameraFeel)} behaves as 'glide' (no banking).`);
+  }
+}
+
 export function mountScrollFlyover(container, config) {
+  validateMountArgs(container, config);
+
   const {
     palette,
     shapeLanguage = 'lowpoly',
@@ -138,8 +282,6 @@ export function mountScrollFlyover(container, config) {
   } = config;
 
   const text = { ...DEFAULT_LABELS, ...labels };
-
-  if (!scenes.length) throw new Error('scroll-flyover: config.scenes must be non-empty');
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 860;
@@ -291,6 +433,15 @@ export function mountScrollFlyover(container, config) {
   // config.layout lets an archetype (camera-archetypes.md) replace the default
   // island-hop anchor layout without touching the engine.
   const anchors = (layout || layoutAnchors)(scenes.length);
+  // A custom layout that returns the wrong shape otherwise fails several lines later as
+  // "cannot read properties of undefined", pointing at the engine rather than at the
+  // layout function the caller wrote.
+  if (!Array.isArray(anchors) || anchors.length < scenes.length) {
+    fail(
+      `config.layout(${scenes.length}) must return an array of at least ${scenes.length} THREE.Vector3 positions ` +
+      `(one per scene), got ${typeName(anchors)}${Array.isArray(anchors) ? ` of length ${anchors.length}` : ''}.`,
+    );
+  }
   const tickers = []; // groups exposing userData.tick(elapsed) — e.g. animated water
   scenes.forEach((sceneCfg, i) => {
     // Each scene gets its OWN deterministic stream, derived from the build seed, so
@@ -299,6 +450,14 @@ export function mountScrollFlyover(container, config) {
     const group = sceneCfg.build(materials, textures, {
       shapeLanguage, performance: effectivePerf, rng, palette,
     });
+    // A builder that computes its group but forgets to return it is the single easiest
+    // mistake to make here, and undefined.position is not a message anyone can act on.
+    if (!group || !group.isObject3D) {
+      fail(
+        `config.scenes[${i}].build() must return a THREE.Object3D (usually a THREE.Group), got ${typeName(group)}. ` +
+        `A builder that ends without an explicit \`return group\` returns undefined.`,
+      );
+    }
     group.position.copy(anchors[i]);
     scene.add(group);
     group.traverse((child) => { if (child.userData?.tick) tickers.push(child.userData.tick); });
@@ -613,7 +772,7 @@ export function mountScrollFlyover(container, config) {
 // Geometry / curve helpers (see references/camera-path.md for the math notes)
 // ---------------------------------------------------------------------------
 
-function layoutAnchors(count, spacing = DEFAULT_SPACING, arcHeight = 4) {
+export function layoutAnchors(count, spacing = DEFAULT_SPACING, arcHeight = 4) {
   const anchors = [];
   for (let i = 0; i < count; i++) {
     const t = count > 1 ? i / (count - 1) : 0;
@@ -626,7 +785,7 @@ function layoutAnchors(count, spacing = DEFAULT_SPACING, arcHeight = 4) {
   return anchors;
 }
 
-function sceneControlPoints(anchor, forwardDir, sceneRadius) {
+export function sceneControlPoints(anchor, forwardDir, sceneRadius) {
   const up = new THREE.Vector3(0, 1, 0);
   const approach = anchor.clone()
     .addScaledVector(forwardDir.clone().negate(), sceneRadius * 1.8)
@@ -638,7 +797,7 @@ function sceneControlPoints(anchor, forwardDir, sceneRadius) {
   return [approach, dive, depart];
 }
 
-function buildWorldCurve(anchors, sceneRadius) {
+export function buildWorldCurve(anchors, sceneRadius) {
   const points = [];
   anchors.forEach((anchor, i) => {
     const next = anchors[i + 1] ?? anchor.clone().add(new THREE.Vector3(10, 0, 0));
@@ -678,7 +837,7 @@ function createBanking(maxBankRad = 0.35) {
   };
 }
 
-function buildDwellEasing(sceneCount, dwellWeight = 2.5) {
+export function buildDwellEasing(sceneCount, dwellWeight = 2.5) {
   const segments = sceneCount * 2 - 1;
   const weights = [];
   for (let i = 0; i < segments; i++) weights.push(i % 2 === 0 ? dwellWeight : 1);
@@ -696,7 +855,7 @@ function buildDwellEasing(sceneCount, dwellWeight = 2.5) {
   return ease;
 }
 
-function nearestDwellCenter(sceneCount, t) {
+export function nearestDwellCenter(sceneCount, t) {
   const centers = Array.from({ length: sceneCount }, (_, i) => (i + 0.5) / sceneCount);
   return centers.reduce((best, c) => Math.abs(c - t) < Math.abs(best - t) ? c : best, centers[0]);
 }

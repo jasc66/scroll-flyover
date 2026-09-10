@@ -81,17 +81,25 @@ function updateCamera(curve, camera, scrollT, lookAhead = 0.015) {
 window.innerHeight)`, or from a dedicated scroll-length container — see
 `scrub-engine.js`.
 
-## 5. Dwell-time easing (spend more of the scroll range near each dive point)
+## 5. Dwell-time easing (give the handover between scenes its own stretch of scroll)
 
-Uniform `t` makes transit segments and dive segments take equal scroll distance, which
-feels rushed at the interesting parts. Fix with a monotonic easing lookup instead of
-moving control points:
+Without a remap, scroll maps straight onto arc length, and the geometry makes that
+lopsided. The control points from §4 reach a long way out — `approach` sits `1.8 *
+sceneRadius` behind its anchor and `depart` `1.6 *` ahead — so with the default spacing
+of 24 and a radius of 6, consecutive scenes very nearly touch. **Measured on the default
+layout, the scene spans are already 86–88% of the whole path's arc length, and the
+handover between two scenes is only 12–14%.** Mapped uniformly, that handover is over
+almost before the visitor notices it, and each scene's copy has to swap out in a moment.
+
+The remap fixes that. Note carefully which side each half acts on: the **scroll** axis is
+divided into `2 * sceneCount - 1` equal parts, and the **curve** axis is divided by
+weight. So a scene segment receives an equal share of the scroll and a `dwellWeight`
+share of the path:
 
 ```js
 function buildDwellEasing(sceneCount, dwellWeight = 2.5) {
-  // Each scene gets `dwellWeight` "shares" of scroll range around its dive point;
-  // transit segments between scenes get 1 share. Build a piecewise-linear remap
-  // from uniform t to eased t.
+  // Uniform scroll in, weighted curve position out. Each scene segment gets
+  // `dwellWeight` shares of the CURVE; each handover between scenes gets 1 share.
   const segments = sceneCount * 2 - 1; // scene, transit, scene, transit, ... scene
   const weights = [];
   for (let i = 0; i < segments; i++) weights.push(i % 2 === 0 ? dwellWeight : 1);
@@ -110,8 +118,30 @@ function buildDwellEasing(sceneCount, dwellWeight = 2.5) {
 // Usage: updateCamera(curve, camera, ease(rawScrollT))
 ```
 
-Tune `dwellWeight` per build — higher means scenes feel longer/slower relative to
-transit; 2–3 is a reasonable start.
+**What that does, measured** (default layout, `dwellWeight: 2.5`, world units of camera
+travel per unit of scroll):
+
+| scenes | scene spans: path → scroll | handover: path → scroll | speed over a scene vs. between |
+| --- | --- | --- | --- |
+| 2 | 87.8% → 75.7% | 12.2% → 24.3% | 2.32x faster |
+| 4 | 86.6% → 75.2% | 13.4% → 24.9% | 2.14x faster |
+| 6 | 86.5% → 75.4% | 13.5% → 24.6% | 2.09x faster |
+
+So the knob buys the **handover** roughly double the scroll its length alone would earn
+it — the camera eases off between scenes and travels briskly across them. That is the
+opposite of what the name suggests, and the reason the name survives is that the visible
+result is the one the name promises: the moment where one scene's copy gives way to the
+next is slow and readable instead of instantaneous, which is what "dwell" was reaching
+for. Raising `dwellWeight` lengthens the pause between scenes; it does not slow the
+flight over a scene, it speeds it up.
+
+Tune per build — 2–3 is a reasonable start. `dwellWeight: 1` collapses the remap to the
+identity, which is worth knowing when debugging: if a pacing problem persists at 1, the
+easing is not what is causing it.
+
+Do not "fix" the mapping to weight the scroll axis instead without deciding to change
+every existing build's pacing on purpose — this behaviour is what shipped builds were
+tuned against by eye, and `test/easing.test.mjs` pins it deliberately.
 
 ## 6. Curvature-based banking ("fly and swoop" only, Step 1.6)
 

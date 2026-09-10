@@ -1,9 +1,13 @@
 # Procedural 3D Scroll Experiences
 
 [![npm downloads](https://img.shields.io/npm/dt/scroll-flyover.svg)](https://www.npmjs.com/package/scroll-flyover)
+[![CI](https://github.com/jasc66/scroll-flyover/actions/workflows/ci.yml/badge.svg)](https://github.com/jasc66/scroll-flyover/actions/workflows/ci.yml)
 
-A [Claude Code](https://claude.com/claude-code) skill for building cinematic,
-scroll-driven Three.js worlds.
+A Three.js/WebGL engine for cinematic, scroll-driven "fly through the world" landing
+pages — usable two ways: as a **standalone library** (`npm install scroll-flyover
+three`, no Claude involved) in any JS/framework project, or as a
+[Claude Code](https://claude.com/claude-code) **skill** that interviews you and
+generates a full build end-to-end.
 
 `scroll-flyover` builds an immersive, scroll-scrubbed "fly through the world" landing
 page using **live Three.js/WebGL** — no paid AI image or video generation, no external
@@ -70,53 +74,10 @@ broke and why.
 
 ## Install
 
-### As a Claude Code skill
-
-```bash
-npx scroll-flyover
-```
-
-Copies `SKILL.md` and `references/` into `~/.claude/skills/scroll-flyover`. Restart
-Claude Code (or start a new session) to pick it up.
-
-`--dir` installs somewhere else instead — the path names the skill's own folder, which
-receives `SKILL.md` and `references/` directly:
-
-```bash
-# this project only, so the skill can be committed alongside the code
-npx scroll-flyover --dir .claude/skills/scroll-flyover
-
-# anywhere at all
-npx scroll-flyover --dir ./vendor/scroll-flyover
-```
-
-`--dir` makes the files reachable by other agents, but be clear about what that does
-and does not buy. `SKILL.md` uses Claude Code's frontmatter format, its Step 1
-interview is written around the `AskUserQuestion` tool, and its Step 8 accessibility
-audit asks for an `accessibility-reviewer` subagent — so another agent will not run
-this as a first-class skill, and those two steps need a human to drive them instead.
-Everything else is portable: the remaining six steps and all 75KB of `references/`
-are plain Markdown that any agent able to read files on request, or any person, can
-work from directly.
-
-`npx scroll-flyover --help` lists the flags.
-
-Or clone the repo directly:
-
-```bash
-git clone <this-repo-url> ~/.claude/skills/scroll-flyover
-```
-
-Or as a submodule / subtree of an existing skills collection. Claude Code picks up any
-folder under `~/.claude/skills/` (or a project's `.claude/skills/`) containing a
-`SKILL.md` with the right frontmatter automatically — see `SKILL.md` for the full
-skill definition and `references/` for the copy-pasteable Three.js patterns it's built
-from.
-
 ### As a library
 
-The scrub engine is also importable directly, for projects that want the scroll/camera
-machinery without generating a build through Claude Code:
+The scrub engine is importable directly, for any project that wants the scroll/camera
+machinery without going through Claude Code at all:
 
 ```bash
 npm install scroll-flyover three
@@ -204,6 +165,80 @@ handle.dispose(); // on SPA route change / unmount
   would fight the visitor's own scroll. The copy panel and rail also honour
   `env(safe-area-inset-*)`, so a notch or home indicator does not sit on the copy.
 
+- **Config is validated before anything renders (since 1.5.0).** Mistakes in the config
+  object are reported as `scroll-flyover:` errors naming the property you got wrong,
+  instead of surfacing as a Three.js stack trace — or, worse, as a page that renders
+  black with no error at all. Validated: the container (a `querySelector` that returned
+  `null` is the common one), `palette.colors`, `palette.accent` (must be hex, because
+  the CTA's text color is picked by measuring its luminance), every scene's `build`
+  function and its return value, `seed` (a non-numeric seed silently collapses to `0`,
+  making every such build identical), `dwellWeight` (`0` divides by zero and renders
+  nothing), `layout`'s return shape, `photos`, and `labels.goToScene`. Unrecognised
+  `performance`/`cameraFeel` values warn rather than throw, since they still render a
+  correct page. `shapeLanguage` is deliberately *not* validated — it is passed straight
+  through to your scene builders, so it may carry a vocabulary of your own.
+
+#### Exported helpers
+
+Beyond `mountScrollFlyover`, the engine's deterministic pieces are importable on their
+own — useful when building custom layouts, or checking your own colors against the same
+rules the overlay uses. All are pure functions with no DOM or WebGL dependency.
+
+| Export | Signature | What it's for |
+| --- | --- | --- |
+| `makeRng` | `(seed?) => () => number` | The seeded RNG (mulberry32) every scene builder must use instead of `Math.random()`. |
+| `relativeLuminance` | `(hex) => number` | WCAG relative luminance. Accepts `#rgb` and `#rrggbb`, with or without the `#`. |
+| `readableTextColor` | `(hex) => '#000' \| '#fff'` | Picks the text color that clears WCAG AA against a background. Worst case is 4.58:1, at the crossover. |
+| `escapeHtml` | `(value) => string` | The escaping applied to all scene copy. |
+| `layoutAnchors` | `(count, spacing?, arcHeight?) => Vector3[]` | The default island-hop scene layout — wrap or replace it via `config.layout`. |
+| `sceneControlPoints` | `(anchor, forwardDir, radius) => Vector3[]` | The approach/dive/depart triple the camera path is built from. |
+| `buildWorldCurve` | `(anchors, radius) => CatmullRomCurve3` | Turns a set of anchors into the flight path. |
+| `buildDwellEasing` | `(sceneCount, dwellWeight?) => (t) => number` | The scroll→curve remap that paces the flight. |
+| `nearestDwellCenter` | `(sceneCount, t) => number` | The resting point the `prefers-reduced-motion` path snaps to. |
+
+### As a Claude Code skill
+
+```bash
+npx scroll-flyover
+```
+
+Copies `SKILL.md` and `references/` into `~/.claude/skills/scroll-flyover`. Restart
+Claude Code (or start a new session) to pick it up.
+
+`--dir` installs somewhere else instead — the path names the skill's own folder, which
+receives `SKILL.md` and `references/` directly:
+
+```bash
+# this project only, so the skill can be committed alongside the code
+npx scroll-flyover --dir .claude/skills/scroll-flyover
+
+# anywhere at all
+npx scroll-flyover --dir ./vendor/scroll-flyover
+```
+
+`--dir` makes the files reachable by other agents, but be clear about what that does
+and does not buy. `SKILL.md` uses Claude Code's frontmatter format, its Step 1
+interview is written around the `AskUserQuestion` tool, and its Step 8 accessibility
+audit asks for an `accessibility-reviewer` subagent — so another agent will not run
+this as a first-class skill, and those two steps need a human to drive them instead.
+Everything else is portable: the remaining six steps and all 75KB of `references/`
+are plain Markdown that any agent able to read files on request, or any person, can
+work from directly.
+
+`npx scroll-flyover --help` lists the flags.
+
+Or clone the repo directly:
+
+```bash
+git clone <this-repo-url> ~/.claude/skills/scroll-flyover
+```
+
+Or as a submodule / subtree of an existing skills collection. Claude Code picks up any
+folder under `~/.claude/skills/` (or a project's `.claude/skills/`) containing a
+`SKILL.md` with the right frontmatter automatically — see `SKILL.md` for the full
+skill definition and `references/` for the copy-pasteable Three.js patterns it's built
+from.
+
 ## What's in here
 
 - `SKILL.md` — the skill itself: the interview flow, build steps, and a large Gotchas
@@ -237,6 +272,32 @@ handle.dispose(); // on SPA route change / unmount
   via a free Three.js CDN import map.
 - `references/qa-reproducibility.mjs` — automates the SKILL.md Step 8
   reload-reproducibility check (Playwright).
+- `test/` — unit tests for the engine's deterministic logic (seeded RNG, WCAG contrast
+  picker, dwell easing, camera curve, HTML escaping, config validation). `npm test`,
+  no browser needed.
+- `scripts/` — `serve.mjs` (dependency-free static server, because `file://` blocks the
+  template's ES module imports), `qa.mjs` (serves and runs the reproducibility check in
+  one command), `check-package.mjs` (asserts the published tarball still carries its
+  entry points).
+
+## Testing
+
+```bash
+npm test          # unit tests — pure logic, fast, no browser
+npm run qa        # renders references/index-template.html in Chromium, compares reloads
+npm run serve     # static server, to open the template by hand
+npm run check     # what CI runs, minus the browser
+```
+
+`npm run qa` needs a browser once: `npx playwright install chromium`.
+
+Every push and pull request runs the unit tests on Node 20 and 22, against **both ends
+of the declared `three` range** (0.152.0 and latest), plus the reproducibility QA, an
+installer smoke test, and the tarball-contents check. The unit tests exist because this
+project's failure mode is subtle: a sign flip in `sceneControlPoints` or a shifted
+contrast constant still renders a page, still passes a screenshot comparison, and is
+quietly wrong. Writing them surfaced exactly that — see 1.5.0 in
+[`CHANGELOG.md`](CHANGELOG.md).
 
 ## Accessibility QA
 
@@ -247,11 +308,17 @@ route-rail buttons, the crawlable SEO block, and the `prefers-reduced-motion` fa
 all are. Findings are treated as QA failures to fix before calling a build done, not
 deferred. This requires the `Agent` tool, listed in `SKILL.md`'s `allowed-tools`.
 
-That step is for a build you're making with this skill. The example gallery in
+That step is for a build you're making with this skill. The engine's own contrast rule
+is covered here instead: `readableTextColor` is asserted to clear the 4.5:1 AA floor
+across a sweep of several thousand backgrounds, including a dense walk along the grey
+axis where the worst case actually lives. Spot-checking a handful of colors misses it —
+that sweep is what caught the AA gap fixed in 1.5.0.
+
+The example gallery in
 [jasc66/scroll-flyover-demo](https://github.com/jasc66/scroll-flyover-demo) is
 additionally covered by an automated regression check (`npm run qa` there, also run in
 CI on every push/PR) that renders each example's real WebGL scene and measures actual
-rendered WCAG contrast — the same class of bug fixed in the WCAG contrast fix above.
+rendered WCAG contrast against the composited result.
 
 ## Deliberate uniqueness
 
@@ -272,12 +339,20 @@ applied during the interview and scene-building steps, not a separate pipeline s
   skill generalizes past that one production build. This repo keeps only the gallery's
   preview screenshots (`examples/`); the runnable source lives in
   [jasc66/scroll-flyover-demo](https://github.com/jasc66/scroll-flyover-demo).
-- **`references/scrub-engine.js`** has had four real defects found and fixed, all by
-  actually running builds through Playwright rather than eyeballing one scroll
-  position — see `references/production-lessons.md` for what broke and why. The most
-  recent was a WCAG contrast bug in the copy overlay and CTA button (hardcoded text
-  color against an arbitrary scene background); every build made with the current
-  engine file gets that fix for free.
+- **`references/scrub-engine.js`** has had real defects found and fixed by actually
+  running builds through Playwright rather than eyeballing one scroll position — see
+  `references/production-lessons.md` for what broke and why — and, since 1.5.0, by a
+  unit suite over its deterministic logic. Both methods have paid: Playwright caught a
+  WCAG contrast bug in the copy overlay and CTA button, and the unit suite then caught
+  two more the screenshots could not (a shorthand-hex parse failure and a text color
+  that fell 0.4 short of AA near the crossover). Every build made with the current
+  engine file gets those fixes for free.
+- **Automated checks run in this repo, on every push and pull request** — unit tests on
+  Node 20 and 22 across both ends of the supported `three` range, the Playwright
+  reproducibility QA against the real shipped template, an installer smoke test, and a
+  check that the published tarball still carries its entry points. Until 1.5.0 the only
+  automated coverage lived in the separate demo repo, which meant an engine regression
+  could reach npm before anything noticed.
 - **`references/production-lessons.md`** is the running list of what production use
   surfaces that the original design didn't anticipate, and grows with each new build.
 - **All four gallery examples are deployed live** at
@@ -293,6 +368,15 @@ applied during the interview and scene-building steps, not a separate pipeline s
   actually cut. Semver here covers the library entry point and the `bin` installer;
   builds generated through `SKILL.md` vendor a frozen copy of the engine, so they are
   unaffected by an upgrade until they are regenerated.
+
+## Contributing
+
+Bug reports and pull requests are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+If you are reporting a bug, the two facts worth including before anything else are
+**which version or commit you have** and **whether you got a real WebGL2 scene or the
+static fallback**: the engine degrades silently between the two, so the same
+description can mean two unrelated problems. The
+[bug report form](.github/ISSUE_TEMPLATE/bug_report.yml) asks for both.
 
 ## License
 

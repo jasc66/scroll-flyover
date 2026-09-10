@@ -6,9 +6,112 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Versioning note: semver applies to the **library entry point** (`mountScrollFlyover`,
-`makeRng`, the `--sf-*` custom properties) and to the `bin` installer. Builds that
+`makeRng`, the pure helpers exported since 1.5.0, the `--sf-*` custom properties) and to
+the `bin` installer. Builds that
 Claude Code generates through `SKILL.md` vendor a frozen copy of the engine, so they
 are unaffected by upgrades here until they are regenerated.
+
+## [1.5.0] - 2026-09-09
+
+Verification moves into this repo. Until now the only automated coverage lived in the
+separate `scroll-flyover-demo` repo and only ran once someone remembered to bump its
+pinned dependency — so an engine regression could reach npm with nothing to catch it.
+This release adds CI here, a unit suite over the deterministic logic, and fail-fast
+config validation. Writing the tests immediately found two real defects, both invisible
+to the screenshot-based QA that was the only check before.
+
+### Fixed
+
+- **`readableTextColor` could return a text color that fails WCAG AA.** Its crossover
+  constant, 0.179, is the luminance where *black* and white swap places — but the
+  function returned `#111`, which is not black. In a narrow band just above the
+  crossover it therefore chose dark text that measured **4.157:1 on `#767676`**, under
+  the 4.5:1 AA floor the function exists to guarantee. The dark option is now `#000`,
+  which makes the constant and the color agree: the worst case across the entire
+  luminance range is now **4.608:1**, and a test asserts that floor over several
+  thousand backgrounds plus a dense walk along the grey axis.
+
+  *Visible change:* CTA button labels on light accent colors are now pure black instead
+  of `#111`. Nothing else moves, and the previous look is available by setting
+  `--sf-cta-text-color: #111` — though doing so re-opens the AA gap on light accents.
+
+- **Shorthand hex colors were misparsed as NaN.** `relativeLuminance('#eee')` read its
+  third channel from an empty substring. NaN fails every comparison, so
+  `readableTextColor` silently took the "dark background" branch and painted **white
+  text on `#eee`** — roughly 1.1:1, from the function whose whole job is contrast. Both
+  `#rgb` and `#rrggbb` are now accepted, with or without the leading `#`, in any case.
+
+- **`playwright` was never declared as a dependency.** It was installed ad hoc in the
+  working tree, so the QA script worked on the maintainer's machine and nowhere else —
+  including CI. It and `three` are now proper `devDependencies` with a committed
+  lockfile.
+
+### Added
+
+- **CI in this repo** (`.github/workflows/ci.yml`), on every push and pull request:
+  unit tests on Node 20 and 22; the same tests against **both ends of the declared
+  `three` range**, 0.152.0 and latest, so the documented peer floor is held by
+  measurement rather than by memory; the Playwright reproducibility QA against the real
+  shipped `references/index-template.html`; an installer smoke test that actually runs
+  `bin/install.js --dir` and checks the files landed; and a check that the published
+  tarball still carries its entry points and no `.npmrc`/`.env`.
+
+- **A unit suite for the pure logic** (`test/`, 46 tests, no browser required): the
+  seeded RNG's determinism and distribution, the WCAG contrast picker, the dwell easing
+  (endpoints, monotonicity, continuity at segment boundaries, and that `dwellWeight: 1`
+  collapses to the identity), the camera curve and its control-point signs, HTML
+  escaping, and config validation. Run with `npm test`.
+
+- **Config validation, before anything renders.** Invalid config was previously either a
+  Three.js stack trace from somewhere unrelated, or no error at all and a black page.
+  Now each mistake is reported as a `scroll-flyover:` error naming the property at
+  fault: a container that is `null` (a `querySelector` that found nothing — called out
+  by name, since it is the common one), a malformed `palette`, a non-hex
+  `palette.accent` (hex specifically, because the CTA's text color is chosen by
+  measuring its luminance), a scene missing its `build` function or returning nothing
+  from it, a non-numeric `seed` (which the RNG silently collapsed to `0`, making every
+  such build render identically), a `dwellWeight` of `0` (which divided by zero and put
+  NaN into every camera position), a `layout` that returns the wrong shape, and
+  malformed `photos`/`labels`. Unknown `performance`/`cameraFeel` values warn instead of
+  throwing, since they still render a correct page. `shapeLanguage` is deliberately not
+  validated — it is passed through to scene builders untouched.
+
+- **The engine's pure helpers are now exported** alongside `mountScrollFlyover` and
+  `makeRng`: `relativeLuminance`, `readableTextColor`, `escapeHtml`, `layoutAnchors`,
+  `sceneControlPoints`, `buildWorldCurve`, `buildDwellEasing`, `nearestDwellCenter`.
+  Additive — nothing was renamed or removed. They are what makes the logic testable, and
+  they are genuinely useful on their own: `readableTextColor` is the right companion to
+  overriding `--sf-cta-bg`, and `layoutAnchors` can be wrapped rather than replaced when
+  writing a custom `config.layout`.
+
+- **`CONTRIBUTING.md` and a bug report form** (`.github/ISSUE_TEMPLATE/bug_report.yml`),
+  both leading with the two facts that decide how fast a bug can be fixed here: which
+  version or commit you have, and whether you got a real WebGL2 scene or the static
+  fallback — the engine degrades silently between them, so the same description covers
+  two unrelated bugs.
+
+- **`scripts/`**: `serve.mjs` (a dependency-free static server, because `file://` blocks
+  the template's ES module imports and the obvious alternatives each break it a
+  different way — `python -m http.server` can serve `.js` as `text/plain` on Windows,
+  `npx serve` redirects `index.html` to an extensionless path and breaks the relative
+  imports), `qa.mjs` (serves and runs the reproducibility check in one command, so it
+  works the same on Windows and in CI), and `check-package.mjs`.
+
+### Changed
+
+- **`camera-path.md` §5 now describes what `dwellWeight` measurably does**, which is not
+  what it used to claim. The doc said the knob spends more of the *scroll* range near
+  each dive point; in fact the scroll axis is divided uniformly and the *curve* axis is
+  divided by weight. Measured on the default layout, the scene spans are already 86–88%
+  of the path's arc length, and the easing hands roughly a quarter of the scroll to the
+  12–14% of path that makes up the handover between scenes — leaving the camera **2.1–2.3x
+  faster over a scene than between two**. The pause the knob buys is in the handover,
+  where one scene's copy gives way to the next.
+
+  **The behaviour is unchanged**, deliberately: every shipped build's pacing was tuned by
+  eye against it, and three projects depend on this engine without controlling when it
+  changes under them. The docs now carry the measured table, and `test/easing.test.mjs`
+  pins the direction so that flipping it has to be a decision rather than a cleanup.
 
 ## [1.4.1] - 2026-09-09
 

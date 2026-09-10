@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit:
+    name: Unit tests (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Installer still parses as ESM
+        # bin/install.js became ESM in 1.1.0. A CJS regression (a stray `require`)
+        # is silent until someone actually runs `npx scroll-flyover`, so it is
+        # checked here rather than discovered by a user.
+        run: node --check bin/install.js
+
+  three-floor:
+    name: three ${{ matrix.three }} (declared peer range)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The package declares `three >=0.152.0`. 0.152.0 is where
+        # renderer.outputColorSpace landed, and it was established by measurement
+        # rather than guessed — so both ends of the supported range are held here.
+        three: ['0.152.0', 'latest']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save three@${{ matrix.three }}
+      - run: node -e "import('three').then(t => console.log('three', t.REVISION))"
+      - run: npm test
+
+  qa:
+    name: Reproducibility + WebGL2 QA
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Reproducibility QA against references/index-template.html
+        # Renders the real shipped template three times over and compares the
+        # screenshots byte for byte, after confirming a real WebGL2 context rather
+        # than the static fallback standing in for one.
+        run: npm run qa
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-screenshots
+          path: .qa-reproducibility/
+          if-no-files-found: ignore
+
+  installer:
+    name: Installer smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Install the skill into a scratch directory
+        run: node bin/install.js --dir "$RUNNER_TEMP/skill-target"
+      - name: The files a skill needs actually arrived
+        run: |
+          set -e
+          test -f "$RUNNER_TEMP/skill-target/SKILL.md"
+          test -f "$RUNNER_TEMP/skill-target/references/scrub-engine.js"
+          test -f "$RUNNER_TEMP/skill-target/references/index-template.html"
+          echo "installer wrote the expected files"
+
+  package:
+    name: Published tarball contents
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Pack and confirm the entry points are in the tarball
+        run: npm run check:package
