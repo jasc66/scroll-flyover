@@ -13,9 +13,17 @@ are unaffected by upgrades here until they are regenerated.
 
 ## [1.5.0] - 2026-09-09
 
-Verification moves into this repo. Until now the only automated coverage lived in the
-separate `scroll-flyover-demo` repo and only ran once someone remembered to bump its
-pinned dependency — so an engine regression could reach npm with nothing to catch it.
+Verification moves into this repo, and starts covering the engine rather than the
+examples.
+
+There was a `QA` workflow here once (`d43dd1f`), but it tested the example gallery, and
+it was removed in `adb3b8e` when that gallery's runnable source moved out to
+`scroll-flyover-demo` — correctly, since the thing it tested had left. What never
+replaced it was any check on the part that stayed: the engine itself. From then until
+now, the only automated coverage lived in the demo repo and only ran once someone
+remembered to bump its pinned dependency, so an engine regression could reach npm with
+nothing to catch it.
+
 This release adds CI here, a unit suite over the deterministic logic, and fail-fast
 config validation. Writing the tests immediately found two real defects, both invisible
 to the screenshot-based QA that was the only check before.

@@ -350,8 +350,9 @@ applied during the interview and scene-building steps, not a separate pipeline s
 - **Automated checks run in this repo, on every push and pull request** — unit tests on
   Node 20 and 22 across both ends of the supported `three` range, the Playwright
   reproducibility QA against the real shipped template, an installer smoke test, and a
-  check that the published tarball still carries its entry points. Until 1.5.0 the only
-  automated coverage lived in the separate demo repo, which meant an engine regression
+  check that the published tarball still carries its entry points. An earlier workflow
+  here tested the example gallery and left with it when that gallery moved to the demo
+  repo; nothing covered the engine itself until now, which meant an engine regression
   could reach npm before anything noticed.
 - **`references/production-lessons.md`** is the running list of what production use
   surfaces that the original design didn't anticipate, and grows with each new build.
