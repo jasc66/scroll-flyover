@@ -57,7 +57,8 @@ repo, which depends on this skill's npm package rather than vendoring a copy of 
 engine — an engine fix here reaches that gallery by bumping its dependency version, not
 by hand-copying files.
 
-[**Try all four live →**](https://scroll-flyover-demo.vercel.app)
+[**Try all four live →**](https://scroll-flyover-demo.vercel.app) — the gallery runs the
+latest release, with the 1.10.0 depth of field turned on in every demo.
 
 |     |     |
 | --- | --- |
