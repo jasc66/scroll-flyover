@@ -242,6 +242,15 @@ handle.dispose(); // on SPA route change / unmount
   returns `false` when there is nothing to draw — no WebGL, a lost context, or after
   `dispose()` — and throws on a non-numeric `progress` or `time`.
 
+  > **Known limitation (since 1.8.0, open).** "The frame a visitor stopped at `p`
+  > sees" holds byte for byte at desktop sizes — `npm run qa:render` asserts it at
+  > 1440×900. At a phone-sized viewport it holds only approximately: measured at
+  > 390×844, the frame a visitor stops on and `renderAt(p)` differed at 5 of 8 points
+  > through the flight, by a few hundred pixels along geometry edges (largest channel
+  > difference 45/255) — sub-pixel, not a different picture. The cause is not yet
+  > diagnosed. `renderAt` itself is unaffected: the same request still draws the same
+  > frame every time, at any size, so captures stay reproducible.
+
   For the same reason, the material animations no longer read `performance.now()`
   directly: `config.clock` is a `() => seconds` function they read from, defaulting to
   exactly that. Pass your own to drive them from a timeline you control.
