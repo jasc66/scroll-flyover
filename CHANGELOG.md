@@ -11,6 +11,63 @@ the `bin` installer. Builds that
 Claude Code generates through `SKILL.md` vendor a frozen copy of the engine, so they
 are unaffected by upgrades here until they are regenerated.
 
+## [1.8.0] - 2026-10-14
+
+A flight can now be drawn frame by frame on request, which is what it takes to turn
+one into a video or to screenshot a scene at an exact point. Nothing a visitor sees
+changes: the scroll-driven frames were compared byte for byte against 1.7.0 at eight
+points through the flight, at 1440×900 and 390×844, and all sixteen are identical.
+
+### Added
+
+- **`handle.renderAt(progress, { time })` and `handle.resume()`.** `renderAt` draws the
+  frame for one point in the flight, synchronously, and holds it until `resume()` hands
+  the camera back to the scroll position. `progress` is scroll progress, 0 to 1 — the
+  number scrolling produces, before the dwell easing — so `renderAt(p)` is the frame a
+  visitor stopped at `p` sees, and the check below asserts exactly that. `time` is what
+  the scenes' `userData.tick(elapsed)` animations read; it defaults to `0`, not to the
+  clock, so a capture that does not mention time gets the same pixels every run.
+
+  It draws what it is asked for. It does not snap to a scene or freeze animations
+  under `prefers-reduced-motion`: that preference belongs to the visitor driving the
+  page by scroll, and the scroll loop still honours it. It returns `false` when there
+  is nothing to draw — no WebGL, a lost context, after `dispose()` — and throws on a
+  non-numeric `progress` or `time`. The no-WebGL handle carries both methods too, so a
+  host does not have to branch on WebGL support to call them.
+
+- **`config.clock`**, a `() => seconds` function the material animations read. Until now
+  they called `performance.now()` directly, which no host could control. The default is
+  that same call, so nothing changes unless you pass one.
+
+- **`npm run qa:render`** (`scripts/render-check.mjs`), in the CI QA job: 19
+  assertions on a fixture that loads three from `node_modules`.
+
+### Fixed
+
+- **The swoop bank made a frame depend on the frames before it.** Two things, both
+  invisible while scrolling and both found by the first `renderAt` check, which drew the
+  same point twice and got two different images:
+  - The bank angle is averaged over the last five frames' curvature, so a frame drawn
+    right after a jump was banked partly for wherever the camera had just been.
+  - `applyBanking` sets `camera.up`, and up only takes effect at the next `lookAt` —
+    the next frame's. Every frame was drawn with the previous frame's bank.
+
+  At rest both converge, which is why the reproducibility QA never saw them: it only
+  compares frames after they stop changing. For a capture they would have made a
+  video's pixels depend on the order its frames were drawn in. `renderAt` now draws the
+  **settled** frame: it fills the averaging window with the current sample — the state
+  five frames at rest leave behind — and banks before aiming. The scroll loop is
+  untouched, so its frames are byte-identical to 1.7.0's.
+
+### Notes
+
+- Unit tests 52 → 54 (`config.clock` validation; the no-WebGL handle's shape).
+- While writing the check, the first page loaded in a freshly launched SwiftShader
+  browser lost its WebGL context about two seconds in and got it back a second later.
+  1.7.0 does the same, so it is not this release, and the engine handles it correctly
+  — fallback card, then recovery. `render-check.mjs` warms up before measuring, as
+  `qa-reproducibility.mjs` already did.
+
 ## [1.7.0] - 2026-09-10
 
 Two defects found the same way 1.5.1's were — by running an accessibility audit, this

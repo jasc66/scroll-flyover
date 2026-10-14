@@ -193,3 +193,8 @@ test('the CTA accessible-name label can be overridden, and must be a function', 
   expectRejection(fakeContainer(), validConfig({ labels: { ctaInScene: 'Start — {title}' } }),
     /labels\.ctaInScene must be a function.*WCAG 2\.5\.3/s);
 });
+
+test('the clock must be a function, since it is called every frame', () => {
+  expectRejection(fakeContainer(), validConfig({ clock: 0 }), /config\.clock must be a function \(\) => seconds, got a number/);
+  expectRejection(fakeContainer(), validConfig({ clock: '0' }), /config\.clock must be a function.*got a string/);
+});

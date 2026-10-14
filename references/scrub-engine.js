@@ -10,6 +10,10 @@
  *   // later, if unmounting (SPA route change, React unmount, etc.):
  *   handle.dispose();
  *
+ *   // capturing a frame (video, screenshots) — draws and holds until resume():
+ *   handle.renderAt(0.4, { time: 1.2 });
+ *   handle.resume();
+ *
  * `three` is expected to be importable as a bare module named 'three' — either
  * via an import map pointing at a CDN build (see index-template.html) or via
  * `npm install three` in a bundled app. Nothing else in this file is
@@ -241,7 +245,7 @@ function validateMountArgs(container, config) {
     fail(`config must be an object, got ${typeName(config)}.`);
   }
 
-  const { palette, scenes, seed, dwellWeight, layout, photos, labels, performance, cameraFeel } = config;
+  const { palette, scenes, seed, dwellWeight, layout, photos, labels, performance, cameraFeel, clock } = config;
 
   if (!palette || typeof palette !== 'object' || Array.isArray(palette)) {
     fail(`config.palette must be an object like { colors: ['#0e1c2b', '#1d3a52'], accent: '#e8a33d' }, got ${typeName(palette)}.`);
@@ -336,6 +340,13 @@ function validateMountArgs(container, config) {
     }
   }
 
+  if (clock !== undefined && clock !== null && typeof clock !== 'function') {
+    fail(
+      `config.clock must be a function () => seconds, got ${typeName(clock)}. ` +
+      `It is called once per frame to drive material animations, so a fixed number would freeze them.`,
+    );
+  }
+
   // Warnings, not errors: an unrecognised value here still renders a correct page, just
   // a quieter one than the caller asked for, and throwing would break a build that has
   // been shipping happily with a typo in it.
@@ -361,6 +372,9 @@ export function mountScrollFlyover(container, config) {
     seed = 1,
     layout = null,
     labels = {},
+    // Material animations (water ripples and the like) read the time from here rather
+    // than from performance.now() directly, so a host can hand them a clock it controls.
+    clock = () => (window.performance?.now?.() ?? Date.now()) / 1000,
   } = config;
 
   const text = { ...DEFAULT_LABELS, ...labels };
@@ -381,7 +395,11 @@ export function mountScrollFlyover(container, config) {
     renderStaticFallback(container, palette, scenes);
     // Still has to clean up after itself: on this path dispose() used to be a no-op,
     // so an SPA route change left the fallback card behind in the host's container.
+    // Same shape as the live handle, so a host calling renderAt() does not have to
+    // branch on WebGL support first. There is no scene to draw, which it reports.
     return {
+      renderAt() { return false; },
+      resume() {},
       dispose() {
         container.querySelector('[data-sf-fallback]')?.remove();
       },
@@ -927,21 +945,39 @@ export function mountScrollFlyover(container, config) {
     requestAnimationFrame(restore);
   }
 
+  // Everything one frame draws is a function of two numbers: where the camera is on
+  // the path (t, already eased) and what time the material animations read (elapsed,
+  // or null to leave them where they are). Both the scroll-driven loop and renderAt()
+  // go through here, so a frame rendered on request is the same frame scrolling to
+  // that point paints — not a second code path that can drift from the first.
+  function paint(t, elapsed, { settle = false } = {}) {
+    // applyBanking sets camera.up, and up only takes effect at the next lookAt — which
+    // in the scroll loop is the next frame's. So each frame is drawn with the previous
+    // frame's bank: invisible in motion, identical at rest, but a settled frame has no
+    // previous frame to borrow from, so it banks first and then aims.
+    if (settle && cameraFeel === 'swoop') applyBanking(curve, camera, t, { settle });
+    updateCameraOnCurve(curve, camera, t);
+    if (!settle && cameraFeel === 'swoop') applyBanking(curve, camera, t);
+    updateCopyVisibility(t);
+    updateRail(t);
+    if (elapsed !== null) {
+      for (const tick of tickers) tick(elapsed);
+    }
+    renderer.render(scene, camera);
+  }
+
+  // Set by renderAt(), cleared by resume(). While it is set the loop keeps running
+  // but stops reading the scroll position, so the frame the host asked for is not
+  // overwritten by the next requestAnimationFrame.
+  let manual = false;
+
   function frame() {
     if (disposed) return;
-    if (running) {
+    if (running && !manual) {
       const t = reducedMotion ? nearestDwellCenter(scenes.length, currentScrollT()) : ease(currentScrollT());
-      updateCameraOnCurve(curve, camera, t);
-      if (cameraFeel === 'swoop') applyBanking(curve, camera, t);
-      updateCopyVisibility(reducedMotion ? t : ease.invertNearest ? t : t);
-      updateRail(t);
       // Material animations (scrolling water ripples, etc). Frozen under
       // reduced-motion — the scene stays fully legible, just still.
-      if (!reducedMotion && tickers.length) {
-        const elapsed = (window.performance?.now?.() ?? Date.now()) / 1000;
-        for (const tick of tickers) tick(elapsed);
-      }
-      renderer.render(scene, camera);
+      paint(t, !reducedMotion && tickers.length ? clock() : null);
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -979,6 +1015,35 @@ export function mountScrollFlyover(container, config) {
   frame();
 
   return {
+    // Draw the frame for a given point in the flight, synchronously, and hold it there
+    // until resume(). `progress` is scroll progress, 0 at the top of the flight and 1
+    // at the bottom — the same number scrolling produces, before the dwell easing — so
+    // renderAt(p) shows what a visitor scrolled to p would see. `time` is what the
+    // material animations read, and defaults to 0 rather than to the clock: a capture
+    // that does not mention time gets the same frame every run.
+    //
+    // This is for capture — rendering video, or screenshotting a scene at an exact
+    // point — so it draws exactly what is asked. It does not snap to a dwell centre or
+    // freeze animations under prefers-reduced-motion; that preference belongs to the
+    // visitor driving the page by scroll, and the scroll-driven loop still honours it.
+    renderAt(progress, { time = 0 } = {}) {
+      if (typeof progress !== 'number' || !Number.isFinite(progress)) {
+        fail(`renderAt(progress) needs a finite number between 0 and 1, got ${typeName(progress)}.`);
+      }
+      if (typeof time !== 'number' || !Number.isFinite(time)) {
+        fail(`renderAt(progress, { time }) needs time as a finite number of seconds, got ${typeName(time)}.`);
+      }
+      if (disposed || contextLost) return false;
+      manual = true;
+      // Settled, so the frame depends on this call alone — not on what was drawn
+      // before it, which would make a video's frames depend on the order of capture.
+      paint(ease(THREE.MathUtils.clamp(progress, 0, 1)), time, { settle: true });
+      return true;
+    },
+    // Hand the camera back to the scroll position. The next frame repaints from it.
+    resume() {
+      manual = false;
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -1076,16 +1141,25 @@ function updateCameraOnCurve(curve, camera, t, lookAhead = 0.015) {
 // factory. As a module-level array it was shared by every flyover on the page (two
 // mounts fed each other's curvature into one history) and it survived dispose(), so a
 // remount started banking from the previous flight's turns instead of level.
+//
+// `settle` answers "what does the bank look like once the camera has stopped here",
+// independent of where it was before — which is what renderAt() needs, because the
+// window makes an ordinary frame depend on the frames drawn before it. A capture that
+// jumps from 0.1 to 0.6 would otherwise get a bank averaged across both. It fills the
+// window with copies of the current sample, the exact state five frames at rest leave
+// behind, so the arithmetic below — and the frame — match a visitor stopped there.
+const BANK_WINDOW = 5;
 function createBanking(maxBankRad = 0.35) {
   const history = [];
-  return function applyBanking(curve, camera, t) {
+  return function applyBanking(curve, camera, t, { settle = false } = {}) {
     const c0 = THREE.MathUtils.clamp(t, 0, 1);
     const c1 = THREE.MathUtils.clamp(t + 0.01, 0, 1);
     const tangent = curve.getTangentAt(c0);
     const tangentNext = curve.getTangentAt(c1);
     const curvature = tangentNext.clone().sub(tangent).length();
+    if (settle) history.splice(0, history.length, ...Array(BANK_WINDOW - 1).fill(curvature));
     history.push(curvature);
-    if (history.length > 5) history.shift();
+    if (history.length > BANK_WINDOW) history.shift();
     const avgCurvature = history.reduce((a, b) => a + b, 0) / history.length;
     const bank = THREE.MathUtils.clamp(avgCurvature * 8, -maxBankRad, maxBankRad);
     camera.up.set(Math.sin(bank), Math.cos(bank), 0);

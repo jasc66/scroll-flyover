@@ -207,6 +207,39 @@ handle.dispose(); // on SPA route change / unmount
   correct page. `shapeLanguage` is deliberately *not* validated — it is passed straight
   through to your scene builders, so it may carry a vocabulary of your own.
 
+- **Capturing frames (since 1.8.0).** `handle.renderAt(progress, { time })` draws the
+  frame for one point in the flight, synchronously, and holds it there until
+  `handle.resume()` hands the camera back to the scroll position. `progress` is scroll
+  progress, `0` at the top of the flight and `1` at the bottom — the same number
+  scrolling produces — so `renderAt(p)` is the frame a visitor stopped at `p` sees.
+  `time` is the seconds your scenes' `userData.tick(elapsed)` animations read, and it
+  defaults to `0`, not to the clock: a capture that does not mention time gets the
+  same pixels every run, whatever order its frames are drawn in.
+
+  That is what a video needs. The engine does not encode one; it gives a frame grabber
+  (Playwright screenshots into `ffmpeg`, or a seek-based renderer) a frame it can ask
+  for by number:
+
+  ```js
+  const fps = 30, seconds = 12, frames = fps * seconds;
+  for (let i = 0; i < frames; i++) {
+    handle.renderAt(i / (frames - 1), { time: i / fps });
+    // read the canvas here, in the same task — the renderer does not keep its
+    // drawing buffer, so after the browser composites it reads back blank
+  }
+  handle.resume();
+  ```
+
+  `renderAt` draws exactly what it is asked for: it does not snap to a scene or
+  freeze animations under `prefers-reduced-motion`. That preference belongs to a
+  visitor driving the page by scroll, and the scroll-driven loop still honours it. It
+  returns `false` when there is nothing to draw — no WebGL, a lost context, or after
+  `dispose()` — and throws on a non-numeric `progress` or `time`.
+
+  For the same reason, the material animations no longer read `performance.now()`
+  directly: `config.clock` is a `() => seconds` function they read from, defaulting to
+  exactly that. Pass your own to drive them from a timeline you control.
+
 #### Exported helpers
 
 Beyond `mountScrollFlyover`, the engine's deterministic pieces are importable on their
@@ -315,6 +348,7 @@ from.
 npm test          # unit tests — pure logic, fast, no browser
 npm run qa        # renders references/index-template.html in Chromium, compares reloads
 npm run qa:a11y   # drives the overlay by keyboard, checks focus/ARIA/button defaults
+npm run qa:render # renderAt(): same frame every time, same frame as scrolling there
 npm run serve     # static server, to open the template by hand
 npm run check     # what CI runs, minus the browser
 ```
