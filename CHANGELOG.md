@@ -30,7 +30,7 @@ are unaffected by upgrades here until they are regenerated.
 
 ### Changed
 
-- `npm test` runs `test/*.test.mjs` explicitly. Node 22.18+ strips types by default and
+- `npm test` runs `test/*.test.mjs` explicitly (unquoted, so the shell expands it on Node 20, which has no glob support in `--test`). Node 22.18+ strips types by default and
   would otherwise pick up the `.ts` type fixture as a test file.
 
 ## [1.8.0] - 2026-10-14

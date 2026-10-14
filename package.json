@@ -18,7 +18,7 @@
     "scroll-flyover": "bin/install.js"
   },
   "scripts": {
-    "test": "node --test \"test/*.test.mjs\"",
+    "test": "node --test test/*.test.mjs",
     "qa": "node scripts/qa.mjs",
     "qa:a11y": "node scripts/a11y-check.mjs",
     "qa:render": "node scripts/render-check.mjs",
