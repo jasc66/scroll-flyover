@@ -11,7 +11,7 @@ the `bin` installer. Builds that
 Claude Code generates through `SKILL.md` vendor a frozen copy of the engine, so they
 are unaffected by upgrades here until they are regenerated.
 
-## [Unreleased]
+## [1.8.1] - 2026-10-14
 
 ### Added
 
