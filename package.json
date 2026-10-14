@@ -4,8 +4,12 @@
   "description": "Claude Code skill + Three.js/WebGL engine for cinematic, scroll-driven fly-through landing pages — no AI image/video generation, zero per-build cost.",
   "type": "module",
   "main": "./references/scrub-engine.js",
+  "types": "./references/scrub-engine.d.ts",
   "exports": {
-    ".": "./references/scrub-engine.js",
+    ".": {
+      "types": "./references/scrub-engine.d.ts",
+      "default": "./references/scrub-engine.js"
+    },
     "./references/*": "./references/*",
     "./package.json": "./package.json"
   },
@@ -14,13 +18,15 @@
     "scroll-flyover": "bin/install.js"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test \"test/*.test.mjs\"",
     "qa": "node scripts/qa.mjs",
     "qa:a11y": "node scripts/a11y-check.mjs",
     "qa:render": "node scripts/render-check.mjs",
     "serve": "node scripts/serve.mjs",
     "check:package": "node scripts/check-package.mjs",
-    "check": "node --check bin/install.js && node --test && node scripts/check-package.mjs"
+    "check": "node --check bin/install.js && npm test && node scripts/check-package.mjs",
+    "check:types": "tsc -p test/types",
+    "lint:package": "publint --strict && attw --pack . --profile esm-only"
   },
   "files": [
     "bin",
@@ -50,10 +56,14 @@
   },
   "license": "MIT",
   "peerDependencies": {
+    "@types/three": ">=0.152.0",
     "three": ">=0.152.0"
   },
   "peerDependenciesMeta": {
     "three": {
+      "optional": true
+    },
+    "@types/three": {
       "optional": true
     }
   },
@@ -61,7 +71,11 @@
     "node": ">=16.7.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@types/three": "^0.186.0",
     "playwright": "^1.63.0",
-    "three": "^0.186.0"
+    "publint": "^0.3.25",
+    "three": "^0.186.0",
+    "typescript": "^5.9.3"
   }
 }

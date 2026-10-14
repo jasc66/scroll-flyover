@@ -111,6 +111,12 @@ handle.dispose(); // on SPA route change / unmount
   `renderer.outputColorSpace` landed; verified against 0.152.0 through 0.186.0). It is
   marked optional so `npx scroll-flyover` skill installs don't pull it in — install it
   yourself when using the library entry point.
+- **TypeScript types ship with the package** (`references/scrub-engine.d.ts`, resolved
+  through `exports` for both `scroll-flyover` and the deep `references/*` import). They
+  reference `@types/three` — install it next to `three` (`npm i -D @types/three`); it is
+  an optional peer with the same `>=0.152.0` floor. The config type rejects what the
+  engine throws on at mount: missing `scenes` or `build`, a CTA with both `ctaHref` and
+  `onCta`, a destination with no `cta` label.
 - **ESM only, browser only.** `mountScrollFlyover` touches `window`/`document` on call,
   so under Next.js import the component with `dynamic(..., { ssr: false })`.
 - **The container must be a normal-flow element**, not `position: sticky` — the engine

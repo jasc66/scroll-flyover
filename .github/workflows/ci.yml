@@ -49,6 +49,12 @@ jobs:
       - run: npm install --no-save three@${{ matrix.three }}
       - run: node -e "import('three').then(t => console.log('three', t.REVISION))"
       - run: npm test
+      - name: Type declarations against @types/three ${{ matrix.three }}
+        # The .d.ts imports Vector3, Object3D and friends from @types/three, an optional
+        # peer with the same floor as three — so both ends of that range are held too.
+        run: |
+          npm install --no-save @types/three@${{ matrix.three }}
+          npm run check:types
 
   qa:
     name: Reproducibility + WebGL2 QA
@@ -116,3 +122,12 @@ jobs:
       - run: npm ci
       - name: Pack and confirm the entry points are in the tarball
         run: npm run check:package
+      - name: Type declarations compile against a consumer
+        # test/types/usage.ts imports the package by name, so this resolves through
+        # `exports` the way a consumer's compiler would, and its @ts-expect-error lines
+        # fail if the declarations stop rejecting a config the engine throws on.
+        run: npm run check:types
+      - name: Exports and types resolve for ESM and bundlers
+        # publint lints package.json against what the tarball actually contains; attw
+        # resolves every `exports` entry the way node16 and bundlers do.
+        run: npm run lint:package

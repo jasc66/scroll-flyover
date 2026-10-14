@@ -11,6 +11,28 @@ the `bin` installer. Builds that
 Claude Code generates through `SKILL.md` vendor a frozen copy of the engine, so they
 are unaffected by upgrades here until they are regenerated.
 
+## [Unreleased]
+
+### Added
+
+- **TypeScript declarations** for the whole library entry point, hand-written in
+  `references/scrub-engine.d.ts` so the engine stays a single build-free module, and
+  wired through `exports` (`types` condition) for the root and deep imports. The CTA
+  is typed as a link (`ctaHref`), a button (`onCta`) or neither — the same exclusivity
+  the engine enforces at mount — so that mistake now fails in the editor instead.
+- `@types/three` as an **optional** peer (`>=0.152.0`), for the same reason `three` is
+  optional: `npx scroll-flyover` skill installs should not pull it in.
+- CI holds the declarations: `test/types/usage.ts` compiles against the package by
+  name, with `@ts-expect-error` cases for each config mistake the engine throws on (each
+  verified to fail when its declaration is loosened); `publint` and `attw` check the
+  `exports` map for ESM and bundlers; both ends of the `@types/three` range are
+  compiled against.
+
+### Changed
+
+- `npm test` runs `test/*.test.mjs` explicitly. Node 22.18+ strips types by default and
+  would otherwise pick up the `.ts` type fixture as a test file.
+
 ## [1.8.0] - 2026-10-14
 
 A flight can now be drawn frame by frame on request, which is what it takes to turn
