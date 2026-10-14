@@ -67,11 +67,13 @@ sixteen are identical, as are the sixteen `renderAt()` frames at the same points
 - `qa:render` waits for six agreeing reads before it calls a scrolled frame settled,
   not two. Two matched once, repeatably, while the swoop bank was still converging —
   a frame that `renderAt()` at the same progress did not draw.
-- The README states a known limitation of `renderAt()` that 1.8.0 shipped with and that
-  surfaced while checking this release: at 390×844 the frame a visitor stops on and
-  `renderAt(p)` differ by a few hundred edge pixels at 5 of 8 points (largest channel
-  difference 45/255). Byte-identical at 1440×900, as `qa:render` asserts; cause not
-  yet diagnosed.
+- `qa:render` checks `renderAt(p)` against a stopped scroll at 390×844 as well as
+  1440×900, and measures `p` the way the engine does. It used `offsetHeight`, which
+  rounds the spacer to whole pixels: 844 × 6.6 = 5570.4 became 5570, the test asked
+  `renderAt` for a point 4e-5 away from where the engine had the camera, and the frames
+  differed. 1.8.0's promise holds — the frame a visitor stopped at `p` sees is
+  `renderAt(p)`, byte for byte, at both sizes; the measurement was wrong, not the
+  engine. 900 × 6.6 = 5940 is why it never showed at 1440×900.
 - The type fixture moved from `test/types/` to `types-test/`, and `npm test` is bare
   `node --test` again. 1.8.1's `node --test test/*.test.mjs` relied on something
   expanding the glob: the shell does on Linux, Node does from 21, but on Windows (where

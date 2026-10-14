@@ -99,12 +99,16 @@ const stableScreenshot = async (maxReads = 40) => {
   throw new Error(`page never settled in ${maxReads} screenshots`);
 };
 
-// The exact progress the engine computes for the current scroll position — same
-// formula as currentScrollT(): the container is the spacer's height, and the
-// scrollable span is that minus the viewport the spacer was built from.
+// The exact progress the engine computes for the current scroll position — the same
+// arithmetic as currentScrollT(), in the same float order: the spacer is
+// innerHeight * (scenes * 2.2) tall, and the scrollable span is that minus the
+// viewport it was built from. Not world.offsetHeight: that rounds to whole pixels, and
+// 844 * 6.6 = 5570.4 became 5570 — enough to move the camera 4e-5 along the path and
+// fail a byte comparison at 390x844, while 900 * 6.6 = 5940 hid it at 1440x900.
 const scrollProgress = (target = page) => target.evaluate(() => {
   const world = document.getElementById('world');
-  return -world.getBoundingClientRect().top / (world.offsetHeight - window.innerHeight);
+  const scenes = document.querySelectorAll('.sf-section').length;
+  return -world.getBoundingClientRect().top / (window.innerHeight * (scenes * 2.2) - window.innerHeight);
 });
 
 const scrollTo = async (fraction, target = page) => {
@@ -166,6 +170,22 @@ for (const target of [0.25, 0.5, 0.83]) {
   const requested = await renderAt(p);
   check(`scroll-driven frame at ${p.toFixed(4)} equals renderAt(${p.toFixed(4)})`, scrolled === requested.png);
 }
+// And at a phone size, where the spacer's height is not a whole number of pixels —
+// the case a rounded measurement got wrong until 1.9.0.
+const phone = await browser.newPage({ viewport: { width: 390, height: 844 } });
+phone.on('pageerror', (e) => errors.push(e.message));
+phone.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+await phone.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+await phone.waitForFunction(() => window.__sfReady === true, null, { timeout: 30000 });
+for (const target of [0.25, 0.5, 0.83]) {
+  await phone.evaluate(() => window.__sfHandle.resume());
+  await scrollTo(target, phone);
+  const p = await scrollProgress(phone);
+  const scrolled = await settledScrollFrame(phone);
+  const requested = await renderAt(p, undefined, phone);
+  check(`390x844: scroll-driven frame at ${p.toFixed(7)} equals renderAt(${p.toFixed(7)})`, scrolled === requested.png);
+}
+await phone.close();
 
 console.log('\n=== 5) resume() hands the camera back to the scroll position ===');
 await renderAt(0.05);
