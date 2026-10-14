@@ -357,9 +357,9 @@ mid-flight than in a static layout.
 
 Copy `references/scrub-engine.js` and `references/index-template.html` into the
 user's project (or adapt the mount call into their framework — it's one function).
-Copy `references/scrub-effects.js` next to it only if the build uses film grain or
-motion blur (`effects: createEffects({ grain: true, motionBlur: true })` in the config
-below); it imports nothing but `three`, so the template's import map covers it.
+Copy `references/scrub-effects.js` next to it only if the build uses film grain, motion
+blur or depth of field (`effects: createEffects({ grain: true, motionBlur: true,
+depthOfField: true })` in the config below); it imports nothing but `three`, so the template's import map covers it.
 **Exception:** if the host project needs i18n or otherwise must render copy through
 its own component system, don't adapt this engine's DOM-baked copy — reimplement the
 mount function in the host's language, keep only the DOM-independent parts (seeded
@@ -595,8 +595,9 @@ category (each links to the matching section there):
   graph setup, spline playback, copy fade wiring, route-rail progress indicator,
   optional photo textures, resize/reduced-motion/context-loss handling, mobile
   performance downgrade).
-- `references/scrub-effects.js` — optional film grain (static) and camera motion blur
-  (from velocity, sharp at rest, Rich tier only), passed in as `config.effects`.
+- `references/scrub-effects.js` — optional film grain (static), camera motion blur
+  (from velocity, sharp at rest) and depth of field (from the path, sharp at each
+  scene), the last two Rich tier only, passed in as `config.effects`.
 - `references/index-template.html` — a minimal standalone page that mounts the engine
   via a free Three.js CDN import map.
 - `references/visual-fidelity.md` — **read this whenever a build looks basic.** Tone

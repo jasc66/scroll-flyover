@@ -187,6 +187,18 @@ export interface EffectsFrame {
    * shared scratch camera with its matrices updated; read it before calling again.
    */
   cameraAt(position: number): PerspectiveCamera;
+  /**
+   * How settled the camera is at a scene, 0–1: `1` anywhere in a scene's dwell stretch,
+   * falling smoothly to `0` halfway between two scenes. Depends on `position` alone, so
+   * it is the same for a `renderAt()` frame as for a stopped scroll. Since 1.10.0.
+   */
+  landing: number;
+  /**
+   * Distance from the camera to the scene it is at or heading for (the next one, during
+   * a transit), in world units; never less than the camera's near plane. Where a lens
+   * would focus. Since 1.10.0.
+   */
+  focusDistance: number;
 }
 
 /**
@@ -257,6 +269,17 @@ export function buildWorldCurve(anchors: Vector3[], sceneRadius: number): Catmul
 
 /** Maps scroll progress to path progress, lingering `dwellWeight`× longer at each scene. */
 export function buildDwellEasing(sceneCount: number, dwellWeight?: number): (t: number) => number;
+
+/**
+ * For a path position (after the dwell easing): `landing`, 1 inside a scene's dwell
+ * stretch and falling to 0 halfway along a transit, and `scene`, the index of the scene
+ * the camera is at or heading for. Since 1.10.0.
+ */
+export function landingAt(
+  sceneCount: number,
+  dwellWeight?: number,
+  position?: number,
+): { landing: number; scene: number };
 
 /** The scroll position (0–1) of the scene centre nearest `t`. */
 export function nearestDwellCenter(sceneCount: number, t: number): number;

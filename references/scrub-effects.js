@@ -1,7 +1,7 @@
 /**
  * scroll-flyover effects (opt-in since 1.9.0)
  * -----------------------------------------------------------------------
- * Film grain and camera motion blur for a flight, handed to the engine as
+ * Film grain, camera motion blur and depth of field for a flight, handed to the engine as
  * `config.effects`. Off unless asked for, and in its own module so that a page which
  * does not ask imports nothing new: the engine only knows the shape of the object
  * this returns, and without one it calls renderer.render() as it always has.
@@ -31,9 +31,12 @@
  *   sharp frame, and renderAt(), which draws a settled frame, always lands sharp.
  *   Only on the 'rich' tier: the engine reports 'light' for phones and coarse
  *   pointers, where the extra passes cost more than they give.
- *
- * Depth of field is deliberately absent: it is a per-pixel gather at every frame, at
- * rest included, and a landing page cannot afford it on the GPUs it meets.
+ * - Depth of field (since 1.10.0) comes from where the camera is on the PATH: none
+ *   while it dwells at a scene, opening up as it travels between two, focused on the
+ *   scene it is heading for. So the flight is read at the landings, a landing costs
+ *   nothing — the pass is skipped whenever the engine reports `landing` 1 — and
+ *   renderAt(p) draws the same lens every time, moving or not. 'rich' tier only, like
+ *   the blur. Gathered at half resolution and blended back by each pixel's depth.
  */
 import * as THREE from 'three';
 
@@ -41,6 +44,8 @@ const DEFAULT_SHUTTER = 0.5;   // fraction of a 60fps frame the shutter is open 
 const DEFAULT_SAMPLES = 8;
 const DEFAULT_MAX_PIXELS = 48; // longest smear, in drawing-buffer pixels
 const DEFAULT_GRAIN = 0.06;    // ± half this, as a fraction of each pixel's own value
+const DEFAULT_DOF_SAMPLES = 24;
+const DEFAULT_DOF_PIXELS = 10; // widest blur circle, in drawing-buffer pixels, mid-transit
 
 function typeName(value) {
   if (value === null) return 'null';
@@ -77,14 +82,14 @@ export function resolveEffectsOptions(options = {}) {
   if (!isPlainObject(options)) {
     fail(`createEffects(options) needs an object like { grain: true, motionBlur: true }, got ${typeName(options)}.`);
   }
-  const known = ['grain', 'motionBlur'];
+  const known = ['grain', 'motionBlur', 'depthOfField'];
   Object.keys(options).forEach((key) => {
     if (!known.includes(key)) {
-      fail(`createEffects() has no ${JSON.stringify(key)} option. The effects are ${known.join(' and ')}.`);
+      fail(`createEffects() has no ${JSON.stringify(key)} option. The effects are grain, motionBlur and depthOfField.`);
     }
   });
 
-  const { grain = false, motionBlur = false } = options;
+  const { grain = false, motionBlur = false, depthOfField = false } = options;
 
   let grainAmount = 0;
   if (grain === true) grainAmount = DEFAULT_GRAIN;
@@ -108,7 +113,22 @@ export function resolveEffectsOptions(options = {}) {
     fail(`createEffects({ motionBlur }) must be true, false or { shutter, samples, maxPixels }, got ${typeName(motionBlur)}.`);
   }
 
-  return { grain: grainAmount, motionBlur: blur };
+  let dof = null;
+  if (depthOfField === true || isPlainObject(depthOfField)) {
+    const o = depthOfField === true ? {} : depthOfField;
+    dof = {
+      samples: numberOption('depthOfField', 'samples', o.samples, DEFAULT_DOF_SAMPLES, 4, 64),
+      maxPixels: numberOption('depthOfField', 'maxPixels', o.maxPixels, DEFAULT_DOF_PIXELS, 0, 64),
+    };
+    if (!Number.isInteger(dof.samples)) {
+      fail(`createEffects({ depthOfField: { samples } }) must be a whole number, got ${dof.samples}.`);
+    }
+    if (dof.maxPixels === 0) dof = null;
+  } else if (depthOfField !== false) {
+    fail(`createEffects({ depthOfField }) must be true, false or { samples, maxPixels }, got ${typeName(depthOfField)}.`);
+  }
+
+  return { grain: grainAmount, motionBlur: blur, depthOfField: dof };
 }
 
 const VERTEX = /* glsl */ `
@@ -162,6 +182,85 @@ const BLUR_FRAGMENT = /* glsl */ `
   }
 `;
 
+// A thin-lens blur over the finished frame. Each pixel's circle of confusion grows with
+// how far its depth is from the focus, as a fraction of its own depth — 0 in focus, 1 at
+// infinity and anywhere nearer than half the focus distance — times uRadius, which the
+// engine's `landing` scales from 0 at a scene to maxPixels mid-transit.
+//
+// A gather over a golden-angle spiral, after Dennis Gustafsson's single-pass bokeh: a
+// tap counts only as far as its OWN blur circle reaches back to this pixel, so a sharp
+// subject does not smear over its blurred backdrop. A tap behind this pixel may reach at
+// most twice this pixel's circle, which keeps a blurred background from bleeding over a
+// sharp edge in front of it. Taps that do not count add the running average instead,
+// so the weight stays even and the result stays in range.
+//
+// Drawn at HALF resolution, into its own buffer: a quarter of the pixels, so a quarter
+// of the gather. The gather was the cost — measured on an Apple M2 at a 2x pixel ratio,
+// at full resolution it added about 15ms to a frame, three times the motion blur. What
+// is lost is detail inside the blur, where there is none to lose. Two reads per tap,
+// colour and depth; folding the circle into the frame copy's alpha so each tap is one
+// read was tried, and the extra pass cost what the saved reads did.
+const DOF_FRAGMENT = /* glsl */ `
+  uniform sampler2D tFrame;
+  uniform sampler2D tDepth;
+  uniform vec2 uResolution;
+  uniform float uNear;
+  uniform float uFar;
+  uniform float uFocus;
+  uniform float uRadius;
+  varying vec2 vUv;
+  float viewDepth(vec2 uv) {
+    float d = texture2D(tDepth, uv).x;
+    return uNear * uFar / (uFar - d * (uFar - uNear));
+  }
+  float blurCircle(float depth) {
+    return clamp(abs(depth - uFocus) / depth, 0.0, 1.0) * uRadius;
+  }
+  void main() {
+    float depth = viewDepth(vUv);
+    float circle = blurCircle(depth);
+    vec3 color = texture2D(tFrame, vUv).rgb;
+    float weight = 1.0;
+    for (int i = 0; i < SAMPLES; i++) {
+      float reach = uRadius * sqrt((float(i) + 0.5) / float(SAMPLES));
+      float angle = float(i) * 2.39996323;
+      vec2 uv = vUv + vec2(cos(angle), sin(angle)) * reach / uResolution;
+      float tapDepth = viewDepth(uv);
+      float tapCircle = blurCircle(tapDepth);
+      if (tapDepth > depth) tapCircle = min(tapCircle, circle * 2.0);
+      color += mix(color / weight, texture2D(tFrame, uv).rgb, smoothstep(reach - 0.5, reach + 0.5, tapCircle));
+      weight += 1.0;
+    }
+    gl_FragColor = vec4(color / weight, 1.0);
+  }
+`;
+
+// Back to full resolution: each pixel takes the half-resolution blur as far as its own
+// circle of confusion, read from the full-resolution depth, says it should. In focus it
+// stays the untouched frame, so a sharp subject keeps every pixel of its edge; the soft
+// half-resolution image only shows where the lens has blurred it anyway.
+const DOF_COMPOSITE_FRAGMENT = /* glsl */ `
+  uniform sampler2D tFrame;
+  uniform sampler2D tDepth;
+  uniform sampler2D tBlur;
+  uniform float uNear;
+  uniform float uFar;
+  uniform float uFocus;
+  uniform float uRadius;
+  uniform float uGrain;
+  varying vec2 vUv;
+  ${HASH}
+  void main() {
+    float d = texture2D(tDepth, vUv).x;
+    float depth = uNear * uFar / (uFar - d * (uFar - uNear));
+    float circle = clamp(abs(depth - uFocus) / depth, 0.0, 1.0) * uRadius;
+    vec3 sharp = texture2D(tFrame, vUv).rgb;
+    vec3 color = mix(sharp, texture2D(tBlur, vUv).rgb, smoothstep(0.5, 2.0, circle));
+    color *= 1.0 + (hash12(gl_FragCoord.xy) - 0.5) * uGrain;
+    gl_FragColor = vec4(color, 1.0);
+  }
+`;
+
 // Grain on a still frame, without reading it back: drawn over the finished frame with
 // blending that computes dst * src * 2, so a source of 0.5 leaves a pixel untouched
 // and the noise scales it up or down by a fraction of its own value. Multiplying
@@ -181,24 +280,32 @@ const GRAIN_FRAGMENT = /* glsl */ `
  *   grain:      true | { amount }                      amount 0–0.5, default 0.06
  *   motionBlur: true | { shutter, samples, maxPixels }  shutter 0–1 (default 0.5),
  *                                                       samples 2–32 (8), maxPixels (48)
+ *   depthOfField: true | { samples, maxPixels }         samples 4–64 (24),
+ *                                                       maxPixels 0–64 (10)
  *
- * With neither, the hook draws straight to the screen, as the engine does without it.
+ * With none of them, the hook draws straight to the screen, as the engine does without it.
  */
 export function createEffects(options = {}) {
   const settings = resolveEffectsOptions(options);
   const blurSettings = settings.motionBlur;
+  const dofSettings = settings.depthOfField;
 
   // Built on first use and rebuilt on resize: a flight that never moves never pays for
-  // the motion blur's buffers, and grain alone allocates no buffer at all.
+  // the motion blur's buffers, a flight that never leaves a landing never pays for the
+  // depth of field's, and grain alone allocates no buffer at all.
   let depthTarget = null;
   let frameTexture = null;
   let depthOnly = null;
   let blurMaterial = null;
+  let dofMaterial = null;
+  let compositeMaterial = null;
+  let halfTarget = null;
   let grainMaterial = null;
   let quad = null;
   let quadScene = null;
   const quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const size = new THREE.Vector2();
+  const halfSize = new THREE.Vector2();
 
   function ensureQuad() {
     if (quad) return;
@@ -226,10 +333,11 @@ export function createEffects(options = {}) {
     });
   }
 
-  function ensureBlur(renderer) {
+  // The depth buffer and the copy of the finished frame that every pass reads.
+  function ensureBuffers(renderer) {
     renderer.getDrawingBufferSize(size);
     if (!depthTarget || depthTarget.width !== size.x || depthTarget.height !== size.y) {
-      disposeBlurBuffers();
+      disposeBuffers();
       depthTarget = new THREE.WebGLRenderTarget(size.x, size.y);
       depthTarget.depthTexture = new THREE.DepthTexture(size.x, size.y);
       depthTarget.depthTexture.type = THREE.UnsignedIntType;
@@ -240,10 +348,14 @@ export function createEffects(options = {}) {
       // Sampled between pixels along the smear, so filtered, not nearest.
       frameTexture.minFilter = frameTexture.magFilter = THREE.LinearFilter;
     }
-    if (blurMaterial) return;
+    if (depthOnly) return;
     ensureQuad();
     // Writes depth and nothing else, for the pass that only exists to fill tDepth.
     depthOnly = new THREE.MeshBasicMaterial({ colorWrite: false });
+  }
+
+  function ensureBlur() {
+    if (blurMaterial) return;
     blurMaterial = new THREE.ShaderMaterial({
       vertexShader: VERTEX,
       fragmentShader: BLUR_FRAGMENT,
@@ -263,11 +375,46 @@ export function createEffects(options = {}) {
     });
   }
 
-  function disposeBlurBuffers() {
+  function ensureDof() {
+    halfSize.set(Math.ceil(size.x / 2), Math.ceil(size.y / 2));
+    if (!halfTarget || halfTarget.width !== halfSize.x || halfTarget.height !== halfSize.y) {
+      halfTarget?.dispose();
+      halfTarget = new THREE.WebGLRenderTarget(halfSize.x, halfSize.y, { depthBuffer: false });
+    }
+    if (dofMaterial) return;
+    const lens = () => ({
+      tFrame: { value: null },
+      tDepth: { value: null },
+      uNear: { value: 0.1 },
+      uFar: { value: 300 },
+      uFocus: { value: 1 },
+      uRadius: { value: 0 },
+    });
+    dofMaterial = new THREE.ShaderMaterial({
+      vertexShader: VERTEX,
+      fragmentShader: DOF_FRAGMENT,
+      defines: { SAMPLES: dofSettings.samples },
+      uniforms: { ...lens(), uResolution: { value: new THREE.Vector2() } },
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    compositeMaterial = new THREE.ShaderMaterial({
+      vertexShader: VERTEX,
+      fragmentShader: DOF_COMPOSITE_FRAGMENT,
+      uniforms: { ...lens(), tBlur: { value: null }, uGrain: { value: settings.grain } },
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+  }
+
+  function disposeBuffers() {
     depthTarget?.depthTexture?.dispose();
     depthTarget?.dispose();
     frameTexture?.dispose();
-    depthTarget = frameTexture = null;
+    halfTarget?.dispose();
+    depthTarget = frameTexture = halfTarget = null;
   }
 
   // three swapped this method's arguments in r165: (position, texture) before, (texture,
@@ -292,11 +439,15 @@ export function createEffects(options = {}) {
 
   return {
     render(renderer, scene, camera, frame) {
+      const rich = frame.performance === 'rich';
       // How far the camera travels while the shutter is open, in path position.
       const travel = blurSettings ? frame.velocity * (blurSettings.shutter / 60) : 0;
-      const blurring = blurSettings !== null && frame.performance === 'rich' && travel !== 0;
+      const blurring = blurSettings !== null && rich && travel !== 0;
+      // An engine before 1.10.0 reports no landing; treat it as always landed.
+      const radius = dofSettings ? dofSettings.maxPixels * (1 - (frame.landing ?? 1)) : 0;
+      const focusing = dofSettings !== null && rich && radius > 0;
 
-      if (!blurring) {
+      if (!blurring && !focusing) {
         renderer.render(scene, camera);
         if (settings.grain > 0) {
           ensureGrain();
@@ -305,7 +456,7 @@ export function createEffects(options = {}) {
         return;
       }
 
-      ensureBlur(renderer);
+      ensureBuffers(renderer);
 
       // Depth only: no colour and no background. The shadow map this pass renders (from
       // the scene's own materials, not the override) is the one the real pass would
@@ -327,6 +478,36 @@ export function createEffects(options = {}) {
       renderer.shadowMap.autoUpdate = shadowAutoUpdate;
       copyFrame(renderer);
 
+      // The lens first, then the shutter: the blur smears the image the lens made. Each
+      // pass draws to the screen; the next one reads that back. Grain goes on in the last.
+      if (focusing) {
+        ensureDof();
+        for (const material of [dofMaterial, compositeMaterial]) {
+          const u = material.uniforms;
+          u.tFrame.value = frameTexture;
+          u.tDepth.value = depthTarget.depthTexture;
+          u.uNear.value = camera.near;
+          u.uFar.value = camera.far;
+          u.uFocus.value = frame.focusDistance;
+        }
+        // The gather, at half resolution, so its radius is in half-resolution pixels.
+        dofMaterial.uniforms.uResolution.value.copy(halfSize);
+        dofMaterial.uniforms.uRadius.value = radius / 2;
+        quad.material = dofMaterial;
+        renderer.setRenderTarget(halfTarget);
+        renderer.render(quadScene, quadCamera);
+        renderer.setRenderTarget(previousTarget);
+
+        const c = compositeMaterial.uniforms;
+        c.tBlur.value = halfTarget.texture;
+        c.uRadius.value = radius;
+        c.uGrain.value = blurring ? 0 : settings.grain;
+        drawOver(renderer, compositeMaterial);
+        if (!blurring) return;
+        copyFrame(renderer);
+      }
+
+      ensureBlur();
       const u = blurMaterial.uniforms;
       u.tFrame.value = frameTexture;
       u.tDepth.value = depthTarget.depthTexture;
@@ -338,12 +519,14 @@ export function createEffects(options = {}) {
     },
 
     dispose() {
-      disposeBlurBuffers();
+      disposeBuffers();
       quad?.geometry.dispose();
       depthOnly?.dispose();
       blurMaterial?.dispose();
+      dofMaterial?.dispose();
+      compositeMaterial?.dispose();
       grainMaterial?.dispose();
-      quad = quadScene = depthOnly = blurMaterial = grainMaterial = null;
+      quad = quadScene = depthOnly = blurMaterial = dofMaterial = compositeMaterial = grainMaterial = null;
     },
   };
 }

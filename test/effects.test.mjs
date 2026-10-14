@@ -23,15 +23,17 @@ function rejects(fn, matcher) {
 }
 
 test('every effect is off unless named', () => {
-  assert.deepEqual(resolveEffectsOptions(), { grain: 0, motionBlur: null });
-  assert.deepEqual(resolveEffectsOptions({}), { grain: 0, motionBlur: null });
-  assert.deepEqual(resolveEffectsOptions({ grain: false, motionBlur: false }), { grain: 0, motionBlur: null });
+  const off = { grain: 0, motionBlur: null, depthOfField: null };
+  assert.deepEqual(resolveEffectsOptions(), off);
+  assert.deepEqual(resolveEffectsOptions({}), off);
+  assert.deepEqual(resolveEffectsOptions({ grain: false, motionBlur: false, depthOfField: false }), off);
 });
 
 test('true turns an effect on with its defaults', () => {
-  const resolved = resolveEffectsOptions({ grain: true, motionBlur: true });
+  const resolved = resolveEffectsOptions({ grain: true, motionBlur: true, depthOfField: true });
   assert.equal(resolved.grain, 0.06);
   assert.deepEqual(resolved.motionBlur, { shutter: 0.5, samples: 8, maxPixels: 48 });
+  assert.deepEqual(resolved.depthOfField, { samples: 24, maxPixels: 10 });
 });
 
 test('an object overrides only what it names', () => {
@@ -39,11 +41,13 @@ test('an object overrides only what it names', () => {
   assert.equal(resolved.grain, 0.1);
   assert.deepEqual(resolved.motionBlur, { shutter: 0.5, samples: 4, maxPixels: 48 });
   assert.equal(resolveEffectsOptions({ grain: {} }).grain, 0.06);
+  assert.deepEqual(resolveEffectsOptions({ depthOfField: { maxPixels: 6 } }).depthOfField, { samples: 24, maxPixels: 6 });
 });
 
 test('a closed shutter or a zero-length smear is no blur, not an empty pass', () => {
   assert.equal(resolveEffectsOptions({ motionBlur: { shutter: 0 } }).motionBlur, null);
   assert.equal(resolveEffectsOptions({ motionBlur: { maxPixels: 0 } }).motionBlur, null);
+  assert.equal(resolveEffectsOptions({ depthOfField: { maxPixels: 0 } }).depthOfField, null);
 });
 
 test('options outside their range are rejected by name', () => {
@@ -53,13 +57,17 @@ test('options outside their range are rejected by name', () => {
   rejects(() => resolveEffectsOptions({ motionBlur: { samples: 1 } }), /samples.*from 2 to 32/);
   rejects(() => resolveEffectsOptions({ motionBlur: { samples: 4.5 } }), /samples.*whole number/);
   rejects(() => resolveEffectsOptions({ motionBlur: { maxPixels: NaN } }), /maxPixels/);
+  rejects(() => resolveEffectsOptions({ depthOfField: { samples: 2 } }), /depthOfField: \{ samples \} \}\) must be a number from 4 to 64/);
+  rejects(() => resolveEffectsOptions({ depthOfField: { samples: 12.5 } }), /depthOfField.*samples.*whole number/);
+  rejects(() => resolveEffectsOptions({ depthOfField: { maxPixels: 100 } }), /maxPixels.*from 0 to 64/);
 });
 
 test('the wrong shape for an option, or an option that does not exist, is rejected', () => {
   rejects(() => resolveEffectsOptions('grain'), /needs an object.*got a string/);
   rejects(() => resolveEffectsOptions({ grain: 0.1 }), /grain \}\) must be true, false or \{ amount \}, got a number/);
   rejects(() => resolveEffectsOptions({ motionBlur: 'fast' }), /motionBlur \}\) must be true, false or/);
-  rejects(() => resolveEffectsOptions({ bloom: true }), /no "bloom" option\. The effects are grain and motionBlur/);
+  rejects(() => resolveEffectsOptions({ depthOfField: 10 }), /depthOfField \}\) must be true, false or \{ samples, maxPixels \}, got a number/);
+  rejects(() => resolveEffectsOptions({ bloom: true }), /no "bloom" option\. The effects are grain, motionBlur and depthOfField/);
   rejects(() => createEffects({ dof: true }), /no "dof" option/);
 });
 
@@ -80,7 +88,7 @@ test('config.effects must be a hook with a render function', () => {
 });
 
 test('a valid hook, or none, gets past validation', () => {
-  for (const effects of [undefined, null, { render() {} }, createEffects(), createEffects({ grain: true, motionBlur: true })]) {
+  for (const effects of [undefined, null, { render() {} }, createEffects(), createEffects({ grain: true, motionBlur: true, depthOfField: true })]) {
     try {
       mountScrollFlyover(fakeContainer(), validConfig({ effects }));
     } catch (error) {

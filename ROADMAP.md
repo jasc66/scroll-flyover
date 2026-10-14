@@ -42,22 +42,19 @@ item below follows:
 | 1.8.0 | `renderAt(progress, { time })`, `resume()`, `config.clock` | Frame capture (video, exact screenshots) |
 | 1.8.1 | TypeScript declarations | Phase 3 (part) |
 | 1.9.0 | `scroll-flyover/effects`: film grain and velocity motion blur behind `config.effects` | Separate entry point |
+| 1.10.0 | Depth of field from the camera's place on the path, `frame.landing` / `focusDistance`, `landingAt` | Measured on an Apple M2 only; still to measure on an integrated GPU |
 
 ## Next, in order
 
-1. **Depth of field** in `scroll-flyover/effects`. In focus during a scene's dwell,
-   falling off while travelling ("read at the landings"). It was deferred out of 1.9.0
-   because of its GPU cost: measure it on modest hardware before shipping, keep it off
-   on the `'light'` tier, and keep `renderAt` captures deterministic.
-2. **A capture example.** A script that turns a flight into an MP4 with `renderAt`
+1. **A capture example.** A script that turns a flight into an MP4 with `renderAt`
    (Playwright frames into `ffmpeg`). That was the reason for 1.8.0, and nothing in the
    repo demonstrates it yet. It is also the material for the README and for social
    posts.
-3. **Ask the consumers what they are building** before freezing any more API surface.
-   Items 4 and 5 depend on the answers.
-4. **React / Next.js wrapper** (`dynamic(..., { ssr: false })`). Only if a consumer is
+2. **Ask the consumers what they are building** before freezing any more API surface.
+   Items 3 and 4 depend on the answers.
+3. **React / Next.js wrapper** (`dynamic(..., { ssr: false })`). Only if a consumer is
    actually on Next.
-5. **Scene recipes as executable code** instead of markdown. Last: it freezes the most
+4. **Scene recipes as executable code** instead of markdown. Last: it freezes the most
    API, and it is still the most speculative piece.
 
 Open question, not scheduled: **porting the skill to other coding agents** (GitHub

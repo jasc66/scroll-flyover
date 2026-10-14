@@ -27,15 +27,20 @@
     // ?effects={"grain":true} mounts with createEffects(that). The hook is wrapped so the
     // check can see what the engine reports each frame, and can force a velocity onto a
     // renderAt() frame — the only way to get a moving frame that is the same every run.
+    // ?performance=light mounts on the light tier, as a phone would.
     let effects;
-    const effectsParam = new URLSearchParams(location.search).get('effects');
+    const params = new URLSearchParams(location.search);
+    const effectsParam = params.get('effects');
     if (effectsParam) {
       const inner = createEffects(JSON.parse(effectsParam));
       window.__sfFrames = [];
       window.__sfForceVelocity = null;
       effects = {
         render(renderer, scene, camera, frame) {
-          window.__sfFrames.push({ position: frame.position, velocity: frame.velocity, performance: frame.performance });
+          window.__sfFrames.push({
+            position: frame.position, velocity: frame.velocity, performance: frame.performance,
+            landing: frame.landing, focusDistance: frame.focusDistance,
+          });
           const v = window.__sfForceVelocity;
           inner.render(renderer, scene, camera, v === null ? frame : { ...frame, velocity: v });
         },
@@ -71,6 +76,7 @@
       // two can be compared byte for byte.
       clock: () => 0,
       effects,
+      performance: params.get('performance') ?? undefined,
       scenes: [
         { title: 'One', body: 'First scene.', build: buildSpinner },
         { title: 'Two', body: 'Second scene.', build: buildPlain },

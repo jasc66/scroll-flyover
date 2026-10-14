@@ -21,6 +21,13 @@ export interface MotionBlurOptions {
   maxPixels?: number;
 }
 
+export interface DepthOfFieldOptions {
+  /** Taps per pixel on the blur circle, a whole number from 4 to 64. Default 24. */
+  samples?: number;
+  /** Widest blur circle mid-transit, in drawing-buffer pixels, 0–64. Default 10. */
+  maxPixels?: number;
+}
+
 export interface EffectsOptions {
   /** Static film grain. Never animated, so it is not motion. */
   grain?: boolean | GrainOptions;
@@ -29,12 +36,19 @@ export interface EffectsOptions {
    * `'light'` tier (phones, coarse pointers).
    */
   motionBlur?: boolean | MotionBlurOptions;
+  /**
+   * Depth of field from the camera's place on the path: sharp while it dwells at a
+   * scene, opening up between scenes, focused on the scene ahead. None on the
+   * `'light'` tier. Since 1.10.0.
+   */
+  depthOfField?: boolean | DepthOfFieldOptions;
 }
 
 /** The settings the passes read, after validation and defaults. */
 export interface ResolvedEffectsOptions {
   grain: number;
   motionBlur: Required<MotionBlurOptions> | null;
+  depthOfField: Required<DepthOfFieldOptions> | null;
 }
 
 /** Builds the object `config.effects` takes. Each effect is off unless named. */

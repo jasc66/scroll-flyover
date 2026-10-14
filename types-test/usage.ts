@@ -14,6 +14,7 @@ import {
   makeRng,
   readableTextColor,
   buildDwellEasing,
+  landingAt,
   layoutAnchors,
   type FlyoverConfig,
   type FlyoverHandle,
@@ -76,6 +77,9 @@ const custom: FlyoverEffects = {
     const at = frame.cameraAt(frame.position - frame.velocity / 120);
     void at.projectionMatrix;
     void frame.performance;
+    const sharp: boolean = frame.landing === 1;
+    const focus: number = frame.focusDistance;
+    void [sharp, focus];
     renderer.render(scene, camera);
   },
 };
@@ -85,7 +89,13 @@ const rng = makeRng(3);
 const n: number = rng();
 const ink: '#000' | '#fff' = readableTextColor('#eee');
 const ease = buildDwellEasing(4, 2.5);
-void [n, ink, ease(0.5), escapeHtml(null)];
+const { landing, scene: subject } = landingAt(4, 2.5, ease(0.5));
+void [n, ink, ease(0.5), escapeHtml(null), landing, subject];
+
+// ---- depth of field (1.10.0) --------------------------------------------------
+
+createEffects({ depthOfField: true });
+createEffects({ grain: true, motionBlur: true, depthOfField: { samples: 16, maxPixels: 8 } });
 
 // ---- mistakes the engine throws on ----------------------------------------
 
@@ -120,7 +130,10 @@ handle.renderAt(0.5, 1.2);
 // @ts-expect-error — an effects hook must have render(); the engine throws without it
 mountScrollFlyover(document.body, { palette: { colors: ['#000'] }, scenes: [{ build: island }], effects: {} });
 
-// @ts-expect-error — the options are grain and motionBlur, nothing else
+// @ts-expect-error — depthOfField is a switch or { samples, maxPixels }, not a radius
+createEffects({ depthOfField: 10 });
+
+// @ts-expect-error — the options are grain, motionBlur and depthOfField, nothing else
 createEffects({ bloom: true });
 
 // @ts-expect-error — grain is a switch or { amount }, not a bare number

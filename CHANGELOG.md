@@ -13,6 +13,47 @@ are unaffected by upgrades here until they are regenerated.
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-14
+
+Depth of field, opt-in, in `scroll-flyover/effects`. A page that does not ask for it
+draws what it drew on 1.9.0: 160 frames — no effects, grain, motion blur, and both;
+`renderAt()` and a stopped scroll, plus forced-velocity frames for the blur; eight
+points through the flight at 1440×900 and 390×844 — compared byte for byte against
+the `v1.9.0` tree, and all identical.
+
+### Added
+
+- **`createEffects({ depthOfField })`** — `true` or `{ samples, maxPixels }` (24 and
+  10 by default). Driven by where the camera is on the path, not by its speed: sharp
+  through each scene's dwell, opening up toward the middle of a transit, focused on
+  the scene the camera is heading for. A landing skips the pass, so it is
+  byte-identical to no effects; a frame between scenes depends on its position alone,
+  so `renderAt(p)` and a visitor stopped at `p` see the same lens. `'rich'` tier only.
+  - A thin-lens circle of confusion from the depth buffer, gathered over a
+    golden-angle spiral with per-tap weights (after Dennis Gustafsson's single-pass
+    bokeh), so a sharp subject does not smear onto its blurred backdrop.
+  - Gathered at **half resolution** and blended back at full resolution by each
+    pixel's own circle, so edges in focus keep every pixel. Measured on an Apple M2
+    (throughput over 120 frames, five interleaved rounds): at full resolution the
+    lens added about 15ms a frame at a 2× pixel ratio, three times the motion blur;
+    at half resolution about 10ms, of which ~4ms is reading the frame back and ~3ms
+    the full-screen composite — costs every effect but grain already pays. About
+    2.5ms at 1×. Folding the blur circle into the frame copy, to make each tap one
+    read instead of two, was tried and measured: no gain, so it was dropped.
+  - With motion blur as well, the lens comes first and the shutter smears its image;
+    grain goes on in whichever pass is last.
+- **`frame.landing`** and **`frame.focusDistance`** in the `config.effects` hook: how
+  settled the camera is at a scene (1 in a dwell, 0 halfway between two scenes), and
+  the straight-line distance to the scene it is at or heading for. Straight-line, not
+  depth along the view: between scenes the camera often looks up into the sky, where
+  the view-axis depth of the next island came out at about one unit.
+- **`landingAt(sceneCount, dwellWeight?, position?)`**, the pure helper behind
+  `landing`, exported and typed alongside `buildDwellEasing`.
+- `qa:render` section 9: landing frames identical to no effects; the lens changes a
+  frame between scenes, the same way whatever was drawn before; a stopped scroll
+  equals `renderAt` with the lens on; nothing on the `'light'` tier (checked by
+  removing the guard: it fails); lens, blur and grain together are reproducible.
+
 ## [1.9.0] - 2026-10-14
 
 Film grain and motion blur, opt-in. A page that does not ask for them imports nothing

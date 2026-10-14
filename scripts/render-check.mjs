@@ -135,6 +135,11 @@ await renderAt(0.02);
 const afterEarly = await renderAt(0.37);
 check('the frame does not depend on what was drawn before it',
   afterLate.png === a1.png && afterEarly.png === a1.png);
+// No-effects frames for section 9: 0.5 is the middle scene's dwell, 0.66 is a third of
+// the way from the middle scene to the last, with the middle island still in view.
+// (Halfway along a transit, this fixture's camera looks at nothing but sky.)
+const plainLanded = await renderAt(0.5);
+const plainTransit = await renderAt(0.66);
 
 console.log('\n=== 2) time reaches the material animations, and only through the argument ===');
 const t0 = await renderAt(0.1);
@@ -232,11 +237,11 @@ check('renderAt returns false once disposed', afterDispose === false);
 console.log('\n=== 8) effects (1.9.0): sharp at rest, static grain, blur from velocity alone ===');
 // Fresh pages in the same, already warmed-up browser. `a1` above is the no-effects
 // frame at 0.37; the rest frames below are compared against it.
-const openFixture = async (effects) => {
+const openFixture = async (effects, extra = '') => {
   const p = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   p.on('pageerror', (e) => errors.push(e.message));
   p.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-  await p.goto(`${url}?effects=${encodeURIComponent(JSON.stringify(effects))}`, { waitUntil: 'networkidle', timeout: 60000 });
+  await p.goto(`${url}?effects=${encodeURIComponent(JSON.stringify(effects))}${extra}`, { waitUntil: 'networkidle', timeout: 60000 });
   await p.waitForFunction(() => window.__sfReady === true, null, { timeout: 30000 });
   return p;
 };
@@ -319,6 +324,59 @@ check('under prefers-reduced-motion the engine reports no velocity, so nothing s
 const disposedFx = await fxPage.evaluate(() => { window.__sfHandle.dispose(); return window.__sfHandle.renderAt(0.5); });
 check('dispose() with effects mounted tears down cleanly', disposedFx === false);
 await fxPage.close();
+
+console.log('\n=== 9) depth of field (1.10.0): sharp at the landings, the same lens however it is reached ===');
+const dofPage = await openFixture({ depthOfField: true });
+const lastFrame = (target) => target.evaluate(() => window.__sfFrames.at(-1));
+const dofLanded = await renderAt(0.5, undefined, dofPage);
+const landedReport = await lastFrame(dofPage);
+check('the engine reports landing 1 at a scene', landedReport?.landing === 1, JSON.stringify(landedReport));
+check('depth of field at a landing is byte-identical to no effects', dofLanded.png === plainLanded.png,
+  'landing 1 skips the pass entirely');
+const dofTransit = await renderAt(0.66, undefined, dofPage);
+const transitReport = await lastFrame(dofPage);
+check('between scenes the engine reports a landing below 1 and a focus distance',
+  transitReport?.landing < 0.5 && transitReport?.focusDistance > 1, JSON.stringify(transitReport));
+const lensDelta = await maxDelta(dofPage, dofTransit.png, plainTransit.png);
+check('between scenes the lens blurs the frame', lensDelta > 8, `largest channel difference ${lensDelta}`);
+await renderAt(0.9, undefined, dofPage);
+const dofTransitAgain = await renderAt(0.66, undefined, dofPage);
+check('the lens depends on the position alone, not on what was drawn before', dofTransitAgain.png === dofTransit.png);
+await dofPage.evaluate(() => window.__sfHandle.resume());
+await scrollThrough(dofPage, 0.56, 0.66);
+const dofScrolled = await settledScrollFrame(dofPage);
+const dofAtStop = await renderAt(await scrollProgress(dofPage), undefined, dofPage);
+check('a visitor stopped between scenes sees the renderAt frame, lens included', dofScrolled === dofAtStop.png);
+await dofPage.close();
+
+const lightPage = await openFixture({ depthOfField: true }, '&performance=light');
+const lightTransit = await renderAt(0.66, undefined, lightPage);
+const lightPlainPage = await openFixture({}, '&performance=light');
+const lightPlainTransit = await renderAt(0.66, undefined, lightPlainPage);
+check("no depth of field on the 'light' tier", lightTransit.png === lightPlainTransit.png);
+await lightPage.close();
+await lightPlainPage.close();
+
+const allPage = await openFixture({ grain: true, motionBlur: true, depthOfField: true });
+const allMoving = () => allPage.evaluate(() => {
+  window.__sfForceVelocity = 0.08;
+  window.__sfHandle.renderAt(0.66);
+  window.__sfForceVelocity = null;
+  return document.querySelector('#world canvas').toDataURL('image/png');
+});
+const allMoved = await allMoving();
+const allStill = await renderAt(0.66, undefined, allPage);
+await renderAt(0.6, undefined, allPage);
+const allMovedAgain = await allMoving();
+check('lens, blur and grain together: a moving frame is the same however it was reached', allMoved === allMovedAgain);
+const allDelta = await maxDelta(allPage, allMoved, allStill.png);
+check('lens, blur and grain together: the blur still smears on top of the lens', allDelta > 8, `largest channel difference ${allDelta}`);
+const stillDelta = await maxDelta(allPage, allStill.png, dofTransit.png);
+check('lens and grain together: grain only on top of the lens — at most 8/255 per channel',
+  stillDelta <= 8, `largest channel difference ${stillDelta}`);
+const disposedAll = await allPage.evaluate(() => { window.__sfHandle.dispose(); return window.__sfHandle.renderAt(0.5); });
+check('dispose() with every effect mounted tears down cleanly', disposedAll === false);
+await allPage.close();
 
 await browser.close();
 server.close();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDwellEasing, nearestDwellCenter } from '../references/scrub-engine.js';
+import { buildDwellEasing, landingAt, nearestDwellCenter } from '../references/scrub-engine.js';
 
 const sweep = (n = 1001) => Array.from({ length: n }, (_, i) => i / (n - 1));
 
@@ -128,4 +128,45 @@ test('dwell centres never collide with their neighbours', () => {
       assert.ok(gap > 0, `${sceneCount} scenes: windows ${i - 1} and ${i} overlap by ${-gap}`);
     }
   }
+});
+
+test('landingAt is 1 through each dwell stretch and 0 halfway between scenes', () => {
+  for (const sceneCount of [1, 2, 3, 6]) {
+    for (const dwellWeight of [0.5, 1, 2.5, 8]) {
+      const ease = buildDwellEasing(sceneCount, dwellWeight);
+      const segments = sceneCount * 2 - 1;
+      for (let seg = 0; seg < segments; seg++) {
+        // The middle of each scroll segment, mapped the way the engine maps it.
+        const { landing, scene } = landingAt(sceneCount, dwellWeight, ease((seg + 0.5) / segments));
+        const label = `${sceneCount}/${dwellWeight} segment ${seg}`;
+        if (seg % 2 === 0) {
+          assert.equal(landing, 1, `${label}: dwell`);
+          assert.equal(scene, seg / 2, `${label}: dwell scene`);
+        } else {
+          assert.ok(landing < 1e-9, `${label}: mid-transit landing ${landing}`);
+          assert.equal(scene, (seg + 1) / 2, `${label}: a transit focuses on the scene ahead`);
+        }
+      }
+    }
+  }
+});
+
+test('landingAt changes smoothly, so the lens never pops', () => {
+  for (const sceneCount of [2, 3, 6]) {
+    let previous = landingAt(sceneCount, 2.5, 0).landing;
+    for (const t of sweep(4001)) {
+      const { landing } = landingAt(sceneCount, 2.5, t);
+      assert.ok(landing >= 0 && landing <= 1, `${sceneCount}: landing ${landing} at ${t}`);
+      assert.ok(Math.abs(landing - previous) < 0.02, `${sceneCount}: jumped ${previous} -> ${landing} at ${t}`);
+      previous = landing;
+    }
+  }
+});
+
+test('landingAt holds at both ends of the flight and outside it', () => {
+  assert.deepEqual(landingAt(3, 2.5, 0), { landing: 1, scene: 0 });
+  assert.deepEqual(landingAt(3, 2.5, 1), { landing: 1, scene: 2 });
+  assert.deepEqual(landingAt(3, 2.5, -1), { landing: 1, scene: 0 });
+  assert.deepEqual(landingAt(3, 2.5, 2), { landing: 1, scene: 2 });
+  assert.deepEqual(landingAt(1, 2.5, 0.5), { landing: 1, scene: 0 });
 });

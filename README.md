@@ -261,6 +261,7 @@ handle.dispose(); // on SPA route change / unmount
   | --- | --- | --- |
   | `grain` | `true` or `{ amount }` (0–0.5) | `0.06` |
   | `motionBlur` | `true` or `{ shutter, samples, maxPixels }` | shutter `0.5` (the 180° rule), `8` samples, `48`px longest smear |
+  | `depthOfField` (1.10.0) | `true` or `{ samples, maxPixels }` | `24` samples, `10`px widest blur circle mid-transit |
 
   **Grain is static**, a fixed pattern that never moves, because animated grain is
   motion the visitor did not ask for and `prefers-reduced-motion` could not remove it
@@ -277,10 +278,22 @@ handle.dispose(); // on SPA route change / unmount
   full-screen gather while the camera moves — about double the frame time in motion,
   nothing extra at rest.
 
+  **Depth of field (since 1.10.0) comes from where the camera is on the path**, not from
+  how fast it moves: sharp for as long as it dwells at a scene, opening up as it
+  travels to the next, focused on the scene it is heading for. The flight is read at
+  the landings. A landing skips the pass altogether, so it draws the same pixels as no
+  effects, and `renderAt(p)` gets the same lens every run, between scenes included.
+  `'rich'` tier only. The blur is gathered at half resolution and blended back by each
+  pixel's own depth, so in-focus edges keep full resolution. Measured on an Apple M2 at
+  a 2× pixel ratio, it adds about 10ms to a frame between scenes (about 2.5ms at 1×),
+  in line with the motion blur; most of that is reading the frame back, which every
+  effect but grain pays.
+
   `config.effects` is a plain hook — `{ render(renderer, scene, camera, frame), dispose() }`
   — that the engine calls instead of `renderer.render()`, so it also takes your own
   pipeline, e.g. an `EffectComposer` with bloom (`references/visual-fidelity.md` §4).
-  `frame` carries `position`, `velocity`, `performance` and `cameraAt(position)`.
+  `frame` carries `position`, `velocity`, `performance`, `cameraAt(position)`, and since
+  1.10.0 `landing` (1 at a scene, 0 halfway between two) and `focusDistance`.
 
 #### Exported helpers
 
@@ -299,6 +312,7 @@ rules the overlay uses. All are pure functions with no DOM or WebGL dependency.
 | `buildWorldCurve` | `(anchors, radius) => CatmullRomCurve3` | Turns a set of anchors into the flight path. |
 | `buildDwellEasing` | `(sceneCount, dwellWeight?) => (t) => number` | The scroll→curve remap that paces the flight. |
 | `nearestDwellCenter` | `(sceneCount, t) => number` | The resting point the `prefers-reduced-motion` path snaps to. |
+| `landingAt` | `(sceneCount, dwellWeight?, position?) => { landing, scene }` | How settled the camera is at a scene, and which scene it is at or heading for (1.10.0). |
 
 ### As a Claude Code skill
 
@@ -373,7 +387,8 @@ from.
   downgrade). Framework-agnostic; see `production-lessons.md` for when to reimplement
   its mount function instead of adapting it as-is (e.g. a host app with its own i18n).
 - `references/scrub-effects.js` — the optional effects (`scroll-flyover/effects`):
-  static film grain and velocity-driven motion blur, passed in as `config.effects`.
+  static film grain, velocity-driven motion blur and path-driven depth of field,
+  passed in as `config.effects`.
 - `references/index-template.html` — a minimal standalone page that mounts the engine
   via a free Three.js CDN import map.
 - `references/qa-reproducibility.mjs` — automates the SKILL.md Step 8
@@ -392,7 +407,7 @@ from.
 npm test          # unit tests — pure logic, fast, no browser
 npm run qa        # renders references/index-template.html in Chromium, compares reloads
 npm run qa:a11y   # drives the overlay by keyboard, checks focus/ARIA/button defaults
-npm run qa:render # renderAt(): same frame every time, same frame as scrolling there; effects sharp at rest
+npm run qa:render # renderAt(): same frame every time, same frame as scrolling there; effects sharp at rest, lens sharp at the landings
 npm run serve     # static server, to open the template by hand
 npm run check     # what CI runs, minus the browser
 ```

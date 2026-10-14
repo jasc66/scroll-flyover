@@ -158,7 +158,7 @@ new THREE.MeshStandardMaterial({
 the "Rich" tier and disable on mobile (`SKILL.md` Step 7). A build that looks
 cinematic at 20fps is worse than one that looks clean at 60.
 
-### Grain and motion blur (`scroll-flyover/effects`, 1.9.0+)
+### Grain, motion blur and depth of field (`scroll-flyover/effects`, 1.9.0+)
 
 `createEffects({ grain: true, motionBlur: true })` from `references/scrub-effects.js`
 adds both without addons. They work on the finished frame, so the scene — fog, tone
@@ -172,6 +172,12 @@ mapping and all — looks exactly as it does without them:
   under `prefers-reduced-motion`. It costs a depth-only pass plus a full-screen gather
   while the camera moves — on SwiftShader, roughly double the frame time in motion,
   nothing at rest.
+- **Depth of field** (`depthOfField: true`, 1.10.0+) follows the camera's place on the
+  path: sharp through each scene's dwell, softening toward the middle of a transit,
+  focused on the scene ahead. It tells the eye where to read — the landings — and
+  costs nothing there. Rich tier only. About 10ms a frame between scenes on an Apple
+  M2 at a 2× pixel ratio, comparable to the motion blur; keep `maxPixels` modest (the
+  default 10 is a hint, not a smear) so the transit stays a journey, not a blur.
 
 ## §5 — Shadows and contact
 
@@ -216,6 +222,7 @@ are two or more unchecked:
 | Bloom | on (strength ≤ 0.5) | **off** |
 | Grain (effects) | optional | optional — no extra buffers |
 | Motion blur (effects) | optional, in motion only | **off** (automatic) |
+| Depth of field (effects) | optional, between scenes only | **off** (automatic) |
 | Shadows | 2048 map, PCFSoft | 1024 map, or off |
 | Emissive props | 1–2 | 1 |
 

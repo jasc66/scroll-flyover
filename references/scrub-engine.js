@@ -985,8 +985,10 @@ export function mountScrollFlyover(container, config) {
       for (const tick of tickers) tick(elapsed);
     }
     if (effects) {
+      const { landing, scene: subject } = landingAt(scenes.length, dwellWeight, t);
       effects.render(renderer, scene, camera, {
         position: t, velocity, performance: effectivePerf, cameraAt,
+        landing, focusDistance: focusDistanceTo(anchors[subject]),
       });
     } else {
       renderer.render(scene, camera);
@@ -999,6 +1001,14 @@ export function mountScrollFlyover(container, config) {
   // current bank: the shutter is a fraction of a frame, and the bank is smoothed over
   // five of them.
   const shutterCamera = camera.clone();
+
+  // How far the scene the camera is at or heading for is — the distance a lens would
+  // focus at. Straight-line, not depth along the view: between scenes the camera looks
+  // along the path, often up into the sky, and the next scene's depth along that line
+  // came out at a metre or so while the island itself was tens of units away.
+  function focusDistanceTo(anchor) {
+    return Math.max(camera.position.distanceTo(anchor), camera.near);
+  }
   function cameraAt(position) {
     shutterCamera.copy(camera);
     updateCameraOnCurve(curve, shutterCamera, position);
@@ -1243,6 +1253,24 @@ export function buildDwellEasing(sceneCount, dwellWeight = 2.5) {
   return ease;
 }
 
+// How settled the camera is at a scene, for a path position the dwell easing produced:
+// 1 anywhere inside a scene's dwell stretch, falling smoothly to 0 halfway along the
+// transit to the next. `scene` is the scene the camera is at or heading for — during a
+// transit, the next one, since the one behind is soon behind the camera too. Read in
+// the same eased space buildDwellEasing() maps into, so it agrees with where the
+// camera actually slows down, not with where the copy fades.
+export function landingAt(sceneCount, dwellWeight = 2.5, position = 0) {
+  const total = sceneCount * dwellWeight + (sceneCount - 1);
+  const t = Math.min(Math.max(position, 0), 1) * total;
+  const stride = dwellWeight + 1;
+  const i = Math.min(Math.floor(t / stride), sceneCount - 1);
+  const into = t - i * stride;
+  if (into <= dwellWeight || i === sceneCount - 1) return { landing: 1, scene: i };
+  // Inside the transit after scene i, which is 1 unit long in this space.
+  const x = Math.min(into - dwellWeight, 1 - (into - dwellWeight)) * 2;
+  const s = Math.min(Math.max(x, 0), 1);
+  return { landing: 1 - s * s * (3 - 2 * s), scene: i + 1 };
+}
 export function nearestDwellCenter(sceneCount, t) {
   const centers = Array.from({ length: sceneCount }, (_, i) => (i + 0.5) / sceneCount);
   return centers.reduce((best, c) => Math.abs(c - t) < Math.abs(best - t) ? c : best, centers[0]);
