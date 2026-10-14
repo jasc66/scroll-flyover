@@ -8,11 +8,15 @@
  * Three.js types come from `@types/three` — an optional peer, like `three` itself.
  */
 import type {
+  Camera,
   CatmullRomCurve3,
   MeshStandardMaterial,
   Object3D,
+  PerspectiveCamera,
+  Scene,
   Texture,
   Vector3,
+  WebGLRenderer,
 } from 'three';
 
 /** Rendering tier. Anything other than `'rich'` behaves as `'light'` (no shadows). */
@@ -159,6 +163,40 @@ export interface FlyoverConfig {
    * high-resolution clock. Pass one you control to make animation time reproducible.
    */
   clock?: (() => number) | null;
+  /**
+   * Post-processing, opt-in since 1.9.0 — usually `createEffects({ grain, motionBlur })`
+   * from `scroll-flyover/effects`. Without it the engine calls `renderer.render()`
+   * directly and draws exactly what it drew before 1.9.0.
+   */
+  effects?: FlyoverEffects | null;
+}
+
+/** What the engine tells `config.effects` about each frame it draws. */
+export interface EffectsFrame {
+  /** Where the camera is on the flight path, 0–1, after the dwell easing. */
+  position: number;
+  /**
+   * Path position per second. `0` for a camera at rest — after scrolling stops, for
+   * every `renderAt()` frame, and always under `prefers-reduced-motion`.
+   */
+  velocity: number;
+  /** The effective tier: `'light'` on coarse pointers / narrow viewports. */
+  performance: Performance;
+  /**
+   * The camera as it would be at another path position (current bank kept). Returns a
+   * shared scratch camera with its matrices updated; read it before calling again.
+   */
+  cameraAt(position: number): PerspectiveCamera;
+}
+
+/**
+ * The hook `config.effects` takes. `render` replaces the engine's
+ * `renderer.render(scene, camera)` and must draw the frame to the screen; `dispose`
+ * is called from `handle.dispose()` to free whatever it allocated on the GPU.
+ */
+export interface FlyoverEffects {
+  render(renderer: WebGLRenderer, scene: Scene, camera: Camera, frame: EffectsFrame): void;
+  dispose?(): void;
 }
 
 export interface RenderAtOptions {

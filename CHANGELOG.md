@@ -13,15 +13,77 @@ are unaffected by upgrades here until they are regenerated.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-14
+
+Film grain and motion blur, opt-in. A page that does not ask for them imports nothing
+new and draws what it drew on 1.8: the scroll-driven frames were compared byte for byte
+against 1.8.1 at eight points through the flight, at 1440×900 and 390×844, and all
+sixteen are identical, as are the sixteen `renderAt()` frames at the same points.
+
+### Added
+
+- **`scroll-flyover/effects`** (`references/scrub-effects.js`), a second entry point
+  with `createEffects({ grain, motionBlur })`. It imports nothing but `three` — no
+  `three/addons` — so an import map that already resolves `three` for the engine, like
+  the template's, covers it too.
+
+  - **Grain is static**: a fixed per-pixel pattern, never animated. Animated grain is
+    idle motion the visitor did not ask for, and `prefers-reduced-motion` could not
+    remove it without changing the look. Drawn as one blended quad over the finished
+    frame; it allocates no buffer.
+  - **Motion blur comes from the camera's velocity** along the path and is zero at rest,
+    so the frame a visitor stops on is sharp and every `renderAt()` capture is sharp
+    and the same on every run. Each pixel is smeared back to where its surface was
+    when the shutter opened (`shutter` 0.5 by default, the 180° rule). Only on the
+    `'rich'` tier, and never under `prefers-reduced-motion`.
+  - Both work on the frame as the renderer drew it to the screen. Drawing the scene
+    offscreen and tone-mapping at the end was tried first and rejected: three mixes fog
+    in after tone mapping and sRGB encoding, inside each material, so the distance
+    washed out visibly as soon as grain was switched on.
+
+- **`config.effects`**, the hook the engine calls instead of `renderer.render()`:
+  `{ render(renderer, scene, camera, frame), dispose() }`. `frame` carries `position`
+  (on the path, after the dwell easing), `velocity` (path position per second; `0`
+  for `renderAt()` frames, under reduced motion, and whenever the camera is at rest),
+  `performance` (the effective tier), and `cameraAt(position)`. It is a contract, not
+  a class, so it also takes your own pipeline — an `EffectComposer` with bloom, as
+  `references/visual-fidelity.md` §4 recommends, no longer needs a fork of the engine.
+  Validated at mount like the rest of the config; `handle.dispose()` calls its
+  `dispose()`.
+
+- Types for both: `references/scrub-effects.d.ts`, wired through `exports`, and
+  `config.effects` / `EffectsFrame` / `FlyoverEffects` in `scrub-engine.d.ts`. The
+  type fixture covers a hand-written hook and the mistakes `createEffects` throws on.
+
+- `npm run qa:render` gains ten effects checks: with motion blur alone, a `renderAt()`
+  frame is byte-identical to no effects, and so is the frame a visitor stops on; grain
+  changes a frame by at most 8/255 per channel and the same way every time; a moving
+  frame (velocity forced onto `renderAt()`) is smeared, and identical however it was
+  reached; under `prefers-reduced-motion` the engine reports no velocity at all. The
+  last was checked by removing the guard it tests: it fails.
+
 ### Changed
 
+- `qa:render` waits for six agreeing reads before it calls a scrolled frame settled,
+  not two. Two matched once, repeatably, while the swoop bank was still converging —
+  a frame that `renderAt()` at the same progress did not draw.
 - The type fixture moved from `test/types/` to `types-test/`, and `npm test` is bare
   `node --test` again. 1.8.1's `node --test test/*.test.mjs` relied on something
   expanding the glob: the shell does on Linux, Node does from 21, but on Windows (where
   npm runs scripts through cmd.exe) with Node 20 nothing did. Outside `test/`, the
   fixture is out of the default pattern that Node 22.18+ widens to `.ts` files.
-  Checked on Node 20, 22.12 and 22.20: 54/54. Repo-only; nothing in the tarball changes
-  except a path in a comment in `scrub-engine.d.ts`.
+  Checked on Node 20, 22.12 and 22.20.
+
+### Verified
+
+- Effects against both ends of the `three` range, 0.152.0 and 0.186.0, in Chromium:
+  no GL errors, and grain and blur render on both. The first run on 0.152.0 failed:
+  its `FramebufferTexture` needs the format as a third argument, which later versions
+  default. It is passed now. `copyFramebufferToTexture` swapped its arguments in r165,
+  and the effects tell the two forms apart by arity.
+- Cost, on SwiftShader (a software GPU, so read the ratio, not the milliseconds):
+  motion blur roughly doubles the frame time while the camera moves, and costs nothing
+  at rest; grain is one blended full-screen quad.
 
 ## [1.8.1] - 2026-10-14
 

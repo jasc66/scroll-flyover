@@ -22,6 +22,26 @@
   <script type="module">
     import * as THREE from 'three';
     import { mountScrollFlyover } from '/references/scrub-engine.js';
+    import { createEffects } from '/references/scrub-effects.js';
+
+    // ?effects={"grain":true} mounts with createEffects(that). The hook is wrapped so the
+    // check can see what the engine reports each frame, and can force a velocity onto a
+    // renderAt() frame — the only way to get a moving frame that is the same every run.
+    let effects;
+    const effectsParam = new URLSearchParams(location.search).get('effects');
+    if (effectsParam) {
+      const inner = createEffects(JSON.parse(effectsParam));
+      window.__sfFrames = [];
+      window.__sfForceVelocity = null;
+      effects = {
+        render(renderer, scene, camera, frame) {
+          window.__sfFrames.push({ position: frame.position, velocity: frame.velocity, performance: frame.performance });
+          const v = window.__sfForceVelocity;
+          inner.render(renderer, scene, camera, v === null ? frame : { ...frame, velocity: v });
+        },
+        dispose() { inner.dispose(); },
+      };
+    }
 
     function buildIsland(material) {
       return new THREE.Mesh(new THREE.CylinderGeometry(6, 6.5, 1.2, 7, 1), material);
@@ -50,6 +70,7 @@
       // Pinned, so the scroll-driven frame and renderAt's default time agree and the
       // two can be compared byte for byte.
       clock: () => 0,
+      effects,
       scenes: [
         { title: 'One', body: 'First scene.', build: buildSpinner },
         { title: 'Two', body: 'Second scene.', build: buildPlain },

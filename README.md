@@ -246,6 +246,42 @@ handle.dispose(); // on SPA route change / unmount
   directly: `config.clock` is a `() => seconds` function they read from, defaulting to
   exactly that. Pass your own to drive them from a timeline you control.
 
+- **Film grain and motion blur (opt-in, since 1.9.0).** A separate entry point, so a
+  page that does not use them loads nothing new and draws exactly the pixels it drew on
+  1.8 (checked byte for byte at eight points through the flight, at 1440×900 and
+  390×844):
+
+  ```js
+  import { createEffects } from 'scroll-flyover/effects';
+
+  mountScrollFlyover(el, { ...config, effects: createEffects({ grain: true, motionBlur: true }) });
+  ```
+
+  | Option | Values | Default when `true` |
+  | --- | --- | --- |
+  | `grain` | `true` or `{ amount }` (0–0.5) | `0.06` |
+  | `motionBlur` | `true` or `{ shutter, samples, maxPixels }` | shutter `0.5` (the 180° rule), `8` samples, `48`px longest smear |
+
+  **Grain is static**, a fixed pattern that never moves, because animated grain is
+  motion the visitor did not ask for and `prefers-reduced-motion` could not remove it
+  without changing the look. **Motion blur comes from the camera's velocity**: it is
+  zero whenever the camera is at rest, so a visitor who stops scrolling sees a sharp
+  frame and every `renderAt()` capture is sharp and reproducible. It is off on the
+  `'light'` tier (phones, coarse pointers) and under `prefers-reduced-motion`. Both
+  work on the finished frame, so fog and tone mapping look exactly as they do without
+  them. Nothing beyond `three` is imported (no `three/addons`), so an import map that
+  resolves `three` for the engine is all the effects need.
+
+  Cost, measured on SwiftShader (software GPU, so ratios rather than absolutes): grain
+  is one blended full-screen quad; motion blur adds a depth-only pass and a
+  full-screen gather while the camera moves — about double the frame time in motion,
+  nothing extra at rest.
+
+  `config.effects` is a plain hook — `{ render(renderer, scene, camera, frame), dispose() }`
+  — that the engine calls instead of `renderer.render()`, so it also takes your own
+  pipeline, e.g. an `EffectComposer` with bloom (`references/visual-fidelity.md` §4).
+  `frame` carries `position`, `velocity`, `performance` and `cameraAt(position)`.
+
 #### Exported helpers
 
 Beyond `mountScrollFlyover`, the engine's deterministic pieces are importable on their
@@ -336,6 +372,8 @@ from.
   user-photo textures, resize/reduced-motion/context-loss handling, mobile performance
   downgrade). Framework-agnostic; see `production-lessons.md` for when to reimplement
   its mount function instead of adapting it as-is (e.g. a host app with its own i18n).
+- `references/scrub-effects.js` — the optional effects (`scroll-flyover/effects`):
+  static film grain and velocity-driven motion blur, passed in as `config.effects`.
 - `references/index-template.html` — a minimal standalone page that mounts the engine
   via a free Three.js CDN import map.
 - `references/qa-reproducibility.mjs` — automates the SKILL.md Step 8
@@ -354,7 +392,7 @@ from.
 npm test          # unit tests — pure logic, fast, no browser
 npm run qa        # renders references/index-template.html in Chromium, compares reloads
 npm run qa:a11y   # drives the overlay by keyboard, checks focus/ARIA/button defaults
-npm run qa:render # renderAt(): same frame every time, same frame as scrolling there
+npm run qa:render # renderAt(): same frame every time, same frame as scrolling there; effects sharp at rest
 npm run serve     # static server, to open the template by hand
 npm run check     # what CI runs, minus the browser
 ```

@@ -245,7 +245,7 @@ function validateMountArgs(container, config) {
     fail(`config must be an object, got ${typeName(config)}.`);
   }
 
-  const { palette, scenes, seed, dwellWeight, layout, photos, labels, performance, cameraFeel, clock } = config;
+  const { palette, scenes, seed, dwellWeight, layout, photos, labels, performance, cameraFeel, clock, effects } = config;
 
   if (!palette || typeof palette !== 'object' || Array.isArray(palette)) {
     fail(`config.palette must be an object like { colors: ['#0e1c2b', '#1d3a52'], accent: '#e8a33d' }, got ${typeName(palette)}.`);
@@ -347,6 +347,19 @@ function validateMountArgs(container, config) {
     );
   }
 
+  if (effects !== undefined && effects !== null) {
+    if (typeof effects !== 'object' || Array.isArray(effects) || typeof effects.render !== 'function') {
+      fail(
+        `config.effects must be an object with a render(renderer, scene, camera, frame) method — usually ` +
+        `createEffects({ grain: true }) from 'scroll-flyover/effects' — got ` +
+        `${typeof effects === 'object' && !Array.isArray(effects) ? 'an object without a render function' : typeName(effects)}.`,
+      );
+    }
+    if (effects.dispose !== undefined && typeof effects.dispose !== 'function') {
+      fail(`config.effects.dispose must be a function, got ${typeName(effects.dispose)}.`);
+    }
+  }
+
   // Warnings, not errors: an unrecognised value here still renders a correct page, just
   // a quieter one than the caller asked for, and throwing would break a build that has
   // been shipping happily with a typo in it.
@@ -375,6 +388,11 @@ export function mountScrollFlyover(container, config) {
     // Material animations (water ripples and the like) read the time from here rather
     // than from performance.now() directly, so a host can hand them a clock it controls.
     clock = () => (window.performance?.now?.() ?? Date.now()) / 1000,
+    // Post-processing (opt-in since 1.9.0). Lives in its own module, scrub-effects.js,
+    // so a page that does not ask for it imports nothing new and draws exactly the
+    // frames it drew before: without it, paint() below calls renderer.render() as it
+    // always has.
+    effects = null,
   } = config;
 
   const text = { ...DEFAULT_LABELS, ...labels };
@@ -950,7 +968,10 @@ export function mountScrollFlyover(container, config) {
   // or null to leave them where they are). Both the scroll-driven loop and renderAt()
   // go through here, so a frame rendered on request is the same frame scrolling to
   // that point paints — not a second code path that can drift from the first.
-  function paint(t, elapsed, { settle = false } = {}) {
+  //
+  // `velocity` only matters to config.effects: how fast the camera is moving along the
+  // path, in path position per second. A settled frame is a camera at rest, so it is 0.
+  function paint(t, elapsed, { settle = false, velocity = 0 } = {}) {
     // applyBanking sets camera.up, and up only takes effect at the next lookAt — which
     // in the scroll loop is the next frame's. So each frame is drawn with the previous
     // frame's bank: invisible in motion, identical at rest, but a settled frame has no
@@ -963,7 +984,26 @@ export function mountScrollFlyover(container, config) {
     if (elapsed !== null) {
       for (const tick of tickers) tick(elapsed);
     }
-    renderer.render(scene, camera);
+    if (effects) {
+      effects.render(renderer, scene, camera, {
+        position: t, velocity, performance: effectivePerf, cameraAt,
+      });
+    } else {
+      renderer.render(scene, camera);
+    }
+  }
+
+  // Where the camera would be at another point on the path — what an effect needs to
+  // know how the frame is moving (motion blur reprojects each pixel to where the
+  // shutter opened). A scratch camera, so asking never moves the real one. It keeps the
+  // current bank: the shutter is a fraction of a frame, and the bank is smoothed over
+  // five of them.
+  const shutterCamera = camera.clone();
+  function cameraAt(position) {
+    shutterCamera.copy(camera);
+    updateCameraOnCurve(curve, shutterCamera, position);
+    shutterCamera.updateMatrixWorld();
+    return shutterCamera;
   }
 
   // Set by renderAt(), cleared by resume(). While it is set the loop keeps running
@@ -971,13 +1011,29 @@ export function mountScrollFlyover(container, config) {
   // overwritten by the next requestAnimationFrame.
   let manual = false;
 
-  function frame() {
+  // The previous painted frame, for velocity. Cleared whenever the loop stops painting
+  // (off-screen, context lost, held by renderAt) so the first frame back is measured
+  // from where the camera is, not from wherever it was before the gap.
+  let lastT = null;
+  let lastStamp = 0;
+
+  function frame(stamp) {
     if (disposed) return;
     if (running && !manual) {
       const t = reducedMotion ? nearestDwellCenter(scenes.length, currentScrollT()) : ease(currentScrollT());
+      // Under reduced motion the camera jumps between dwell centres instead of flying,
+      // and smearing a jump into a blur would be motion the visitor asked not to see.
+      let velocity = 0;
+      if (!reducedMotion && lastT !== null && stamp > lastStamp) {
+        velocity = (t - lastT) / ((stamp - lastStamp) / 1000);
+      }
+      lastT = t;
+      lastStamp = stamp;
       // Material animations (scrolling water ripples, etc). Frozen under
       // reduced-motion — the scene stays fully legible, just still.
-      paint(t, !reducedMotion && tickers.length ? clock() : null);
+      paint(t, !reducedMotion && tickers.length ? clock() : null, { velocity });
+    } else {
+      lastT = null;
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -1012,7 +1068,7 @@ export function mountScrollFlyover(container, config) {
   });
 
   resize();
-  frame();
+  frame(window.performance?.now?.() ?? 0);
 
   return {
     // Draw the frame for a given point in the flight, synchronously, and hold it there
@@ -1067,6 +1123,9 @@ export function mountScrollFlyover(container, config) {
       Object.values(textures).forEach(tex => tex?.dispose?.());
       scene.background?.dispose?.();
       envRenderTarget.dispose();
+      // The effects' render targets and shaders are GPU memory too, and the engine is
+      // the one that knows when the flight is over.
+      effects?.dispose?.();
 
       // renderer.dispose() tears down three's internal caches but does NOT release the
       // WebGL context — verified by reading three r186, where dispose() only clears

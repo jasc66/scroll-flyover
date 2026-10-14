@@ -16,6 +16,8 @@ const REQUIRED = [
   'bin/install.js',
   'references/scrub-engine.js',
   'references/scrub-engine.d.ts',
+  'references/scrub-effects.js',
+  'references/scrub-effects.d.ts',
   'references/index-template.html',
   'references/qa-reproducibility.mjs',
 ];

@@ -51,7 +51,7 @@ const check = (name, pass, detail) => {
 };
 
 // Draw on request and read back in the same task.
-const renderAt = (progress, opts) => page.evaluate(([p, o]) => {
+const renderAt = (progress, opts, target = page) => target.evaluate(([p, o]) => {
   const drawn = window.__sfHandle.renderAt(p, o);
   return { drawn, png: document.querySelector('#world canvas').toDataURL('image/png') };
 }, [progress, opts]);
@@ -59,7 +59,7 @@ const renderAt = (progress, opts) => page.evaluate(([p, o]) => {
 // Read the frame the scroll loop paints. Two frames in, our callback runs right after
 // the engine's in the same frame (rAF callbacks run in registration order), so the
 // buffer still holds what the engine just drew.
-const scrollFrame = () => page.evaluate(() => new Promise((resolve) => {
+const scrollFrame = (target = page) => target.evaluate(() => new Promise((resolve) => {
   requestAnimationFrame(() => requestAnimationFrame(() => {
     resolve(document.querySelector('#world canvas').toDataURL('image/png'));
   }));
@@ -68,13 +68,18 @@ const scrollFrame = () => page.evaluate(() => new Promise((resolve) => {
 // The frame a visitor who has stopped scrolling sees. The swoop bank averages five
 // frames, so "stopped" means five frames at rest, not a fixed wait: on a CI runner
 // SwiftShader can draw only a few frames a second, and 300ms was measured to fall
-// short there (first CI run of 1.8.0 failed at 0.83 only). Read until two
-// consecutive frames agree.
-const settledScrollFrame = async (maxReads = 40) => {
-  let last = await scrollFrame();
+// short there (first CI run of 1.8.0 failed at 0.83 only). Read until the frame has
+// held for longer than that window. Two agreeing reads were not enough: during 1.9.0
+// a pair matched while the bank was still converging, repeatably, at one of sixteen
+// positions — a frame that renderAt() at the same progress did not draw.
+const SETTLED_READS = 6;
+const settledScrollFrame = async (target = page, maxReads = 80) => {
+  let last = await scrollFrame(target);
+  let streak = 0;
   for (let i = 0; i < maxReads; i++) {
-    const next = await scrollFrame();
-    if (next === last) return next;
+    const next = await scrollFrame(target);
+    streak = next === last ? streak + 1 : 0;
+    if (streak >= SETTLED_READS) return next;
     last = next;
   }
   throw new Error(`scroll-driven frame never settled in ${maxReads} reads`);
@@ -97,17 +102,17 @@ const stableScreenshot = async (maxReads = 40) => {
 // The exact progress the engine computes for the current scroll position — same
 // formula as currentScrollT(): the container is the spacer's height, and the
 // scrollable span is that minus the viewport the spacer was built from.
-const scrollProgress = () => page.evaluate(() => {
+const scrollProgress = (target = page) => target.evaluate(() => {
   const world = document.getElementById('world');
   return -world.getBoundingClientRect().top / (world.offsetHeight - window.innerHeight);
 });
 
-const scrollTo = async (fraction) => {
-  await page.evaluate((f) => {
+const scrollTo = async (fraction, target = page) => {
+  await target.evaluate((f) => {
     const world = document.getElementById('world');
     window.scrollTo(0, world.offsetTop + Math.round(f * (world.offsetHeight - window.innerHeight)));
   }, fraction);
-  await page.waitForTimeout(300);
+  await target.waitForTimeout(300);
 };
 
 console.log('\n=== 1) the same request draws the same frame ===');
@@ -203,6 +208,97 @@ const afterDispose = await page.evaluate(() => {
   return window.__sfHandle.renderAt(0.5);
 });
 check('renderAt returns false once disposed', afterDispose === false);
+
+console.log('\n=== 8) effects (1.9.0): sharp at rest, static grain, blur from velocity alone ===');
+// Fresh pages in the same, already warmed-up browser. `a1` above is the no-effects
+// frame at 0.37; the rest frames below are compared against it.
+const openFixture = async (effects) => {
+  const p = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  p.on('pageerror', (e) => errors.push(e.message));
+  p.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await p.goto(`${url}?effects=${encodeURIComponent(JSON.stringify(effects))}`, { waitUntil: 'networkidle', timeout: 60000 });
+  await p.waitForFunction(() => window.__sfReady === true, null, { timeout: 30000 });
+  return p;
+};
+// Largest per-channel difference between two frames, decoded in the page.
+const maxDelta = (target, a, b) => target.evaluate(async ([a, b]) => {
+  const load = (src) => new Promise((resolve) => { const img = new Image(); img.onload = () => resolve(img); img.src = src; });
+  const pixels = (img) => {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    return ctx.getImageData(0, 0, img.width, img.height).data;
+  };
+  const [pa, pb] = (await Promise.all([load(a), load(b)])).map(pixels);
+  let max = 0;
+  for (let i = 0; i < pa.length; i++) if ((i & 3) !== 3) max = Math.max(max, Math.abs(pa[i] - pb[i]));
+  return max;
+}, [a, b]);
+
+// Scrolls a stretch of the flight a little per frame, the way a wheel or a thumb does,
+// so the loop sees the camera move between consecutive frames. A single scrollTo is a
+// jump the loop may see only once, at which point there is no previous frame to
+// measure a velocity from.
+const scrollThrough = (target, from, to, steps = 12) => target.evaluate(([from, to, steps]) => new Promise((resolve) => {
+  const world = document.getElementById('world');
+  const span = world.offsetHeight - window.innerHeight;
+  let i = 0;
+  const step = () => {
+    window.scrollTo(0, world.offsetTop + Math.round((from + (to - from) * (i / steps)) * span));
+    if (i++ < steps) requestAnimationFrame(step); else resolve();
+  };
+  requestAnimationFrame(step);
+}), [from, to, steps]);
+
+const blurPage = await openFixture({ motionBlur: true });
+const blurRest = await renderAt(0.37, undefined, blurPage);
+check('motion blur alone: a renderAt frame is byte-identical to no effects', blurRest.png === a1.png,
+  'renderAt draws a settled frame, and a camera at rest gets no blur pass at all');
+const reported = await blurPage.evaluate(() => window.__sfFrames.at(-1));
+check('renderAt reports velocity 0 to the effects', reported?.velocity === 0, JSON.stringify(reported));
+await blurPage.evaluate(() => window.__sfHandle.resume());
+await scrollThrough(blurPage, 0.3, 0.5);
+const blurScrolled = await settledScrollFrame(blurPage);
+const blurAtHalf = await renderAt(await scrollProgress(blurPage), undefined, blurPage);
+check('motion blur alone: the frame a visitor stops on is the sharp renderAt frame', blurScrolled === blurAtHalf.png);
+const velocities = await blurPage.evaluate(() => window.__sfFrames.map((f) => f.velocity));
+check('scrolling reports a non-zero velocity while the camera moves', velocities.some((v) => v !== 0));
+await blurPage.close();
+
+const fxPage = await openFixture({ grain: true, motionBlur: true });
+const grained = await renderAt(0.37, undefined, fxPage);
+const grainedAgain = await renderAt(0.37, undefined, fxPage);
+check('grain is static: the same request draws the same frame', grained.png === grainedAgain.png);
+const grainDelta = await maxDelta(fxPage, grained.png, a1.png);
+check('grain changes the frame by grain only — at most 8/255 per channel',
+  grained.png !== a1.png && grainDelta <= 8, `largest channel difference ${grainDelta}`);
+
+// A moving frame, forced onto renderAt so it is the same on every run and runner.
+const moving = () => fxPage.evaluate(() => {
+  window.__sfForceVelocity = 0.08;
+  window.__sfHandle.renderAt(0.37);
+  window.__sfForceVelocity = null;
+  return document.querySelector('#world canvas').toDataURL('image/png');
+});
+const moved = await moving();
+await renderAt(0.9, undefined, fxPage);
+const movedAgain = await moving();
+const blurDelta = await maxDelta(fxPage, moved, grained.png);
+check('a moving frame is smeared, not the still one', blurDelta > 8, `largest channel difference ${blurDelta}`);
+check('a moving frame is the same however it was reached', moved === movedAgain,
+  'the blur reads velocity and nothing else — no history from earlier frames');
+
+await fxPage.emulateMedia({ reducedMotion: 'reduce' });
+await fxPage.reload({ waitUntil: 'networkidle', timeout: 60000 });
+await fxPage.waitForFunction(() => window.__sfReady === true, null, { timeout: 30000 });
+await scrollThrough(fxPage, 0.1, 0.7, 24);
+const reducedVelocities = await fxPage.evaluate(() => window.__sfFrames.map((fr) => fr.velocity));
+check('under prefers-reduced-motion the engine reports no velocity, so nothing smears',
+  reducedVelocities.length > 0 && reducedVelocities.every((v) => v === 0), `${reducedVelocities.length} frames`);
+const disposedFx = await fxPage.evaluate(() => { window.__sfHandle.dispose(); return window.__sfHandle.renderAt(0.5); });
+check('dispose() with effects mounted tears down cleanly', disposedFx === false);
+await fxPage.close();
 
 await browser.close();
 server.close();

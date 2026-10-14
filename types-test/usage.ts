@@ -21,6 +21,7 @@ import {
 } from 'scroll-flyover';
 // The deep-import passthrough has to carry the same types.
 import { escapeHtml } from 'scroll-flyover/references/scrub-engine.js';
+import { createEffects, type FlyoverEffects } from 'scroll-flyover/effects';
 
 const island: SceneBuilder = (materials, textures, { rng, performance, palette }) => {
   const group = new THREE.Group();
@@ -65,6 +66,21 @@ handle.resume();
 handle.dispose();
 void drew;
 
+// ---- effects (1.9.0) ---------------------------------------------------------
+
+const effects = createEffects({ grain: true, motionBlur: { shutter: 0.5, samples: 8 } });
+mountScrollFlyover(document.body, { palette: { colors: ['#000'] }, scenes: [{ build: island }], effects });
+// The hook is a contract, not a class: a hand-rolled one is accepted too.
+const custom: FlyoverEffects = {
+  render(renderer, scene, camera, frame) {
+    const at = frame.cameraAt(frame.position - frame.velocity / 120);
+    void at.projectionMatrix;
+    void frame.performance;
+    renderer.render(scene, camera);
+  },
+};
+mountScrollFlyover(document.body, { palette: { colors: ['#000'] }, scenes: [{ build: island }], effects: custom });
+
 const rng = makeRng(3);
 const n: number = rng();
 const ink: '#000' | '#fff' = readableTextColor('#eee');
@@ -100,3 +116,12 @@ mountScrollFlyover(document.body, {
 
 // @ts-expect-error — time is an option, not a positional argument
 handle.renderAt(0.5, 1.2);
+
+// @ts-expect-error — an effects hook must have render(); the engine throws without it
+mountScrollFlyover(document.body, { palette: { colors: ['#000'] }, scenes: [{ build: island }], effects: {} });
+
+// @ts-expect-error — the options are grain and motionBlur, nothing else
+createEffects({ bloom: true });
+
+// @ts-expect-error — grain is a switch or { amount }, not a bare number
+createEffects({ grain: 0.1 });
