@@ -509,6 +509,11 @@ applied during the interview and scene-building steps, not a separate pipeline s
   builds generated through `SKILL.md` vendor a frozen copy of the engine, so they are
   unaffected by an upgrade until they are regenerated.
 
+## Roadmap
+
+What is planned next, in order, and what was considered and turned down:
+[`ROADMAP.md`](ROADMAP.md).
+
 ## Contributing
 
 Bug reports and pull requests are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
