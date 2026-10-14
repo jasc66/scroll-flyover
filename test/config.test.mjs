@@ -198,3 +198,8 @@ test('the clock must be a function, since it is called every frame', () => {
   expectRejection(fakeContainer(), validConfig({ clock: 0 }), /config\.clock must be a function \(\) => seconds, got a number/);
   expectRejection(fakeContainer(), validConfig({ clock: '0' }), /config\.clock must be a function.*got a string/);
 });
+
+test('onReady must be a function, since it is called rather than read', () => {
+  expectRejection(fakeContainer(), validConfig({ onReady: true }), /config\.onReady must be a function \(\{ webgl \}\) => void, got a boolean/);
+  expectRejection(fakeContainer(), validConfig({ onReady: 'hideLoader' }), /config\.onReady must be a function.*got a string/);
+});

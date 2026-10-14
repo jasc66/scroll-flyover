@@ -46,15 +46,26 @@ item below follows:
 
 ## Next, in order
 
-1. **A capture example.** A script that turns a flight into an MP4 with `renderAt`
-   (Playwright frames into `ffmpeg`). That was the reason for 1.8.0, and nothing in the
-   repo demonstrates it yet. It is also the material for the README and for social
-   posts.
-2. **Ask the consumers what they are building** before freezing any more API surface.
-   Items 3 and 4 depend on the answers.
-3. **React / Next.js wrapper** (`dynamic(..., { ssr: false })`). Only if a consumer is
-   actually on Next.
-4. **Scene recipes as executable code** instead of markdown. Last: it freezes the most
+1. **Ship 1.11.0** (on branch `engine-lessons-from-techinsight`): `config.onReady`,
+   `qa-reproducibility.mjs --reduced-motion`, and the rule that a tick is a function of
+   `elapsed`. All three came from putting a production site, TechInsight, into the
+   demo gallery. Then bump the gallery to 1.11.0.
+2. **Capture example: done in the gallery** (`scroll-flyover-demo`,
+   `scripts/capture.mjs`, `renderAt` into `ffmpeg`). Still to do: expose the handle in
+   the other four examples, record one video each, and put them in this README.
+3. **Upgrade TechInsight itself** from `^1.4.0`. Since 1.6.0 a `cta` needs a
+   destination, so its forum button moves to `ctaHref`; its community tick stops
+   accumulating per frame; its banner links leave the `aria-hidden` block; its loader
+   moves to `onReady`. It is the first real consumer, so this upgrade is the proof
+   that one can move forward without breakage.
+4. **React / Next.js wrapper** (`dynamic(..., { ssr: false })`). The condition this
+   item waited on is met: TechInsight is on Next and hand-wrote what a wrapper would
+   own (client-only mount, dispose on unmount, loader, CTA through the router).
+   Validated by moving TechInsight onto it with identical frames before and after.
+5. **Measure depth of field on an integrated GPU.** Only measured on an Apple M2.
+6. **Ask the consumers what they are building** before freezing more API surface. A
+   "Showcase" issue template is the cheapest channel.
+7. **Scene recipes as executable code** instead of markdown. Last: it freezes the most
    API, and it is still the most speculative piece.
 
 Open question, not scheduled: **porting the skill to other coding agents** (GitHub

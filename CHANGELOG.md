@@ -13,6 +13,35 @@ are unaffected by upgrades here until they are regenerated.
 
 ## [Unreleased]
 
+What putting a production site (TechInsight, blog-tecno.vercel.app) into the demo
+gallery showed was missing. A page that does not pass `onReady` draws what it drew on
+1.10.0: 54 frames — no effects, depth of field, and grain + blur + depth of field;
+`renderAt()` at eight points and a stopped scroll; 1440×900 and 390×844 — compared byte
+for byte against the `v1.10.0` tree, and all identical.
+
+### Added
+
+- **`config.onReady({ webgl })`** — called once, one frame after the first frame is
+  drawn, or after the static fallback is shown (`webgl: false`). For taking down a
+  loader: the production site had to watch for the `<canvas>` with a
+  `MutationObserver` and keep a four-second timeout for the no-WebGL case. Runs after
+  `mountScrollFlyover()` has returned; never after `dispose()`. Typed as `ReadyInfo`.
+- **`qa-reproducibility.mjs --reduced-motion`** — loads the page under
+  `prefers-reduced-motion`, where the engine holds scenes still. Without it, a build
+  whose scenes animate at rest (`userData.tick`) could never pass Step 8: the screen
+  never stops changing, so the check timed out on exactly the builds `SKILL.md`
+  encourages.
+- `qa:render` section 10: `onReady` called exactly once and after the handle exists,
+  no pixel changed by passing it, never called after an immediate `dispose()`, and
+  called with `webgl: false` over the fallback card. Removing the once-only guard and
+  the disposed guard each fails it.
+
+### Documentation
+
+- `SKILL.md` and `gotchas.md`: a tick must be a function of `elapsed`, never a
+  per-frame `+=`. The production site's community scene accumulated per frame, so it
+  drifted twice as fast at 120Hz and `renderAt()` could not reproduce it.
+
 ## [1.10.0] - 2026-10-14
 
 Depth of field, opt-in, in `scroll-flyover/effects`. A page that does not ask for it

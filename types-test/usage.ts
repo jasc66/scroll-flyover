@@ -44,6 +44,7 @@ const config: FlyoverConfig = {
   photos: { hero: '/hero.jpg' },
   layout: (n) => layoutAnchors(n, 30),
   clock: () => 0,
+  onReady: ({ webgl }) => { const shown: boolean = webgl; void shown; },
   labels: {
     goToScene: (i, total) => `Ir a la escena ${i} de ${total}`,
     ctaInScene: (label, title) => `${label} — ${title}`,
@@ -138,3 +139,6 @@ createEffects({ bloom: true });
 
 // @ts-expect-error — grain is a switch or { amount }, not a bare number
 createEffects({ grain: 0.1 });
+
+// @ts-expect-error — onReady is called, so a flag is not enough
+mountScrollFlyover(document.body, { palette: { colors: ['#000'], accent: '#fff' }, scenes: [{ title: 'x', build: island }], onReady: true });

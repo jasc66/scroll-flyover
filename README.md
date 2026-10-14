@@ -247,6 +247,23 @@ handle.dispose(); // on SPA route change / unmount
   directly: `config.clock` is a `() => seconds` function they read from, defaulting to
   exactly that. Pass your own to drive them from a timeline you control.
 
+  A whole flight to MP4 this way is in the demo gallery's
+  [`scripts/capture.mjs`](https://github.com/jasc66/scroll-flyover-demo/blob/main/scripts/capture.mjs)
+  (`npm run capture -- <example>`).
+
+- **Knowing when there is something on screen (since 1.11.0).** `config.onReady` is
+  called once, one frame after the first frame is drawn, with `{ webgl: true }` — or
+  after the static fallback card is shown, with `{ webgl: false }`. It is the signal to
+  take a loader down. Before it, a host had to watch for the `<canvas>` (which exists
+  before anything is drawn on it, and never exists without WebGL) and keep a timeout as
+  a backstop. It runs after `mountScrollFlyover()` has returned, so the handle is
+  already in hand; a mount disposed first never calls it; and a mount that starts
+  off-screen calls it when it first scrolls into view and draws.
+
+  ```js
+  mountScrollFlyover(el, { ...config, onReady: () => loader.classList.add('done') });
+  ```
+
 - **Film grain and motion blur (opt-in, since 1.9.0).** A separate entry point, so a
   page that does not use them loads nothing new and draws exactly the pixels it drew on
   1.8 (checked byte for byte at eight points through the flight, at 1440×900 and
@@ -408,7 +425,7 @@ from.
 npm test          # unit tests — pure logic, fast, no browser
 npm run qa        # renders references/index-template.html in Chromium, compares reloads
 npm run qa:a11y   # drives the overlay by keyboard, checks focus/ARIA/button defaults
-npm run qa:render # renderAt(): same frame every time, same frame as scrolling there; effects sharp at rest, lens sharp at the landings
+npm run qa:render # renderAt(): same frame every time, same frame as scrolling there; effects sharp at rest, lens sharp at the landings; onReady once
 npm run serve     # static server, to open the template by hand
 npm run check     # what CI runs, minus the browser
 ```

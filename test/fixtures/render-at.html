@@ -28,6 +28,9 @@
     // check can see what the engine reports each frame, and can force a velocity onto a
     // renderAt() frame — the only way to get a moving frame that is the same every run.
     // ?performance=light mounts on the light tier, as a phone would.
+    // ?onready=1 passes config.onReady and records each call; ?onready=dispose also
+    // disposes right after mounting. ?nowebgl=1 makes webgl2 unavailable, so the engine
+    // takes its static-fallback path.
     let effects;
     const params = new URLSearchParams(location.search);
     const effectsParam = params.get('effects');
@@ -45,6 +48,18 @@
           inner.render(renderer, scene, camera, v === null ? frame : { ...frame, velocity: v });
         },
         dispose() { inner.dispose(); },
+      };
+    }
+
+    const onReadyParam = params.get('onready');
+    window.__sfReadyCalls = [];
+    const onReady = onReadyParam
+      ? (info) => window.__sfReadyCalls.push({ info, handleSet: !!window.__sfHandle })
+      : undefined;
+    if (params.get('nowebgl')) {
+      const getContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
+        return type === 'webgl2' ? null : getContext.call(this, type, ...rest);
       };
     }
 
@@ -77,12 +92,14 @@
       clock: () => 0,
       effects,
       performance: params.get('performance') ?? undefined,
+      onReady,
       scenes: [
         { title: 'One', body: 'First scene.', build: buildSpinner },
         { title: 'Two', body: 'Second scene.', build: buildPlain },
         { title: 'Three', body: 'Third scene.', build: buildSpinner },
       ],
     });
+    if (onReadyParam === 'dispose') window.__sfHandle.dispose();
     window.__sfReady = true;
   </script>
 </body>

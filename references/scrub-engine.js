@@ -245,7 +245,7 @@ function validateMountArgs(container, config) {
     fail(`config must be an object, got ${typeName(config)}.`);
   }
 
-  const { palette, scenes, seed, dwellWeight, layout, photos, labels, performance, cameraFeel, clock, effects } = config;
+  const { palette, scenes, seed, dwellWeight, layout, photos, labels, performance, cameraFeel, clock, effects, onReady } = config;
 
   if (!palette || typeof palette !== 'object' || Array.isArray(palette)) {
     fail(`config.palette must be an object like { colors: ['#0e1c2b', '#1d3a52'], accent: '#e8a33d' }, got ${typeName(palette)}.`);
@@ -347,6 +347,10 @@ function validateMountArgs(container, config) {
     );
   }
 
+  if (onReady !== undefined && onReady !== null && typeof onReady !== 'function') {
+    fail(`config.onReady must be a function ({ webgl }) => void, got ${typeName(onReady)}.`);
+  }
+
   if (effects !== undefined && effects !== null) {
     if (typeof effects !== 'object' || Array.isArray(effects) || typeof effects.render !== 'function') {
       fail(
@@ -393,6 +397,11 @@ export function mountScrollFlyover(container, config) {
     // frames it drew before: without it, paint() below calls renderer.render() as it
     // always has.
     effects = null,
+    // Called once, when there is something on screen: the first frame drawn, or the
+    // static fallback card. Since 1.11.0. A host covering the canvas with a loader had
+    // no other signal — the canvas exists before its first frame is drawn, and with no
+    // WebGL it never exists at all.
+    onReady = null,
   } = config;
 
   const text = { ...DEFAULT_LABELS, ...labels };
@@ -411,6 +420,9 @@ export function mountScrollFlyover(container, config) {
   probeContext?.getExtension('WEBGL_lose_context')?.loseContext();
   if (!hasWebGL2) {
     renderStaticFallback(container, palette, scenes);
+    // Deferred, like the live path's, so the host has its handle before the callback runs.
+    let fallbackDisposed = false;
+    if (onReady) requestAnimationFrame(() => { if (!fallbackDisposed) onReady({ webgl: false }); });
     // Still has to clean up after itself: on this path dispose() used to be a no-op,
     // so an SPA route change left the fallback card behind in the host's container.
     // Same shape as the live handle, so a host calling renderAt() does not have to
@@ -419,6 +431,7 @@ export function mountScrollFlyover(container, config) {
       renderAt() { return false; },
       resume() {},
       dispose() {
+        fallbackDisposed = true;
         container.querySelector('[data-sf-fallback]')?.remove();
       },
     };
@@ -883,6 +896,7 @@ export function mountScrollFlyover(container, config) {
 
   let rafId = null;
   let disposed = false;
+  let readyNotified = false;
   // `running` is DERIVED from two independent pause reasons, never set directly —
   // see references/gotchas.md "Host-page integration": folding multiple reasons
   // into one flag means whichever handler fires last "wins," and a context-loss
@@ -992,6 +1006,12 @@ export function mountScrollFlyover(container, config) {
       });
     } else {
       renderer.render(scene, camera);
+    }
+    // The first paint can run synchronously inside mountScrollFlyover(), before the
+    // host has its handle. One frame later, that frame has also been presented.
+    if (onReady && !readyNotified) {
+      readyNotified = true;
+      requestAnimationFrame(() => { if (!disposed) onReady({ webgl: true }); });
     }
   }
 

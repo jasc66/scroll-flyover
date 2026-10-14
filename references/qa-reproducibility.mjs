@@ -15,7 +15,12 @@
  *   2. Fails loudly on any console/page error during load.
  *
  * Usage:
- *   node references/qa-reproducibility.mjs <url> [--out <dir>] [--reloads N]
+ *   node references/qa-reproducibility.mjs <url> [--out <dir>] [--reloads N] [--reduced-motion]
+ *
+ * --reduced-motion loads the page under prefers-reduced-motion, where the engine holds
+ * every scene still. Use it when scenes animate at rest (a `userData.tick`): without
+ * it the screen never stops changing and the check cannot settle. It checks the same
+ * thing — the world is built identically on every load — just without the animation.
  *
  * Example (serving a local build first):
  *   npx serve my-build -l 4173 &
@@ -32,7 +37,7 @@ import path from 'node:path';
 
 const url = process.argv[2];
 if (!url || url.startsWith('--')) {
-  console.error('Usage: node qa-reproducibility.mjs <url> [--out <dir>] [--reloads N]');
+  console.error('Usage: node qa-reproducibility.mjs <url> [--out <dir>] [--reloads N] [--reduced-motion]');
   process.exit(1);
 }
 
@@ -43,6 +48,7 @@ function flagValue(name, fallback) {
 
 const outDir = flagValue('--out', '.qa-reproducibility');
 const reloads = parseInt(flagValue('--reloads', '3'), 10);
+const reducedMotion = process.argv.includes('--reduced-motion');
 
 /**
  * Waits until consecutive screenshots stop changing, instead of a fixed
@@ -80,7 +86,10 @@ async function main() {
   const browser = await chromium.launch({
     args: ['--enable-unsafe-swiftshader', '--use-gl=swiftshader'],
   });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 900 },
+    ...(reducedMotion ? { reducedMotion: 'reduce' } : {}),
+  });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -106,7 +115,10 @@ async function main() {
   try {
     await waitForStableFrame(page, { maxWaitMs: 30000 }); // longer budget: cold load
   } catch (e) {
-    console.error(`FAIL: initial load never settled — ${e.message}.`);
+    console.error(
+      `FAIL: initial load never settled — ${e.message}.` +
+      (reducedMotion ? '' : ' If a scene has a userData.tick, rerun with --reduced-motion.'),
+    );
     await browser.close();
     process.exit(1);
   }
@@ -131,8 +143,8 @@ async function main() {
     } catch (e) {
       console.error(
         `FAIL: reload ${i + 1} — ${e.message}. The scene may be animating even at rest ` +
-        `(check for a tick() that ignores prefers-reduced-motion) or performance is too ` +
-        `slow to settle.`
+        `(a userData.tick: rerun with --reduced-motion, which holds scenes still) or ` +
+        `performance is too slow to settle.`
       );
       fail = true;
       break;

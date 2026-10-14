@@ -404,7 +404,10 @@ Three.js primitives. The full signature is `build(materials, textures, options)`
 
 A scene group may set `userData.tick = (elapsed) => {…}`; the engine calls it every
 frame for material animations like scrolling water, and skips it under
-`prefers-reduced-motion`.
+`prefers-reduced-motion`. **Make every tick a function of `elapsed` alone**: set
+`x = base + f(elapsed)`, never `x += step` per call. A per-frame accumulator runs twice
+as fast on a 120Hz screen as on a 60Hz one, and `renderAt(p, { time })` can no longer
+give the same frame twice.
 
 The engine also emits a **visually-hidden, crawlable HTML block** containing every
 scene's eyebrow/title/body/tags as real semantic markup, inserted ahead of the canvas.
@@ -518,7 +521,9 @@ work harder than the AI-video approach:
   Any difference means a builder is using `Math.random()` instead of the seeded `rng`
   (Step 2). This is the check that turns the build into something a client can sign off
   on. `references/qa-reproducibility.mjs` automates this against a served URL (`node
-  qa-reproducibility.mjs <url>`, needs `playwright`) — it also confirms a real WebGL2
+  qa-reproducibility.mjs <url>`, needs `playwright`; add `--reduced-motion` when any
+  scene has a `userData.tick`, or the screen never stops changing and the check cannot
+  settle) — it also confirms a real WebGL2
   scene rendered rather than the static fallback, which is what makes this check
   trustworthy headless (see `references/gotchas.md`, "Reproducibility and QA").
 - **View source / disable JS** and confirm the crawlable copy block is present with

@@ -151,6 +151,16 @@ photos → interaction → reproducibility → host-page integration).
   comparing the static fallback card, not the actual scene. Launch with
   `--enable-unsafe-swiftshader --use-gl=swiftshader` and confirm the screenshots show
   the 3D scene before trusting the result. See `references/production-lessons.md`.
+- **The reproducibility check never settles ("frame never stabilized")** → a scene
+  animates at rest through `userData.tick`, so consecutive screenshots always differ.
+  Rerun with `--reduced-motion`: the engine holds every scene still under that
+  preference, and the check still proves the world is built the same on every load.
+- **An animation runs faster on some screens / `renderAt` frames differ between runs**
+  → a tick accumulates per call (`x += Math.sin(elapsed) * 0.004`), so it depends on
+  how many frames were drawn: double speed at 120Hz, and a capture that differs with
+  whatever was rendered before. Write it as a function of `elapsed`: the accumulator
+  above at 60fps is `x = base + 0.24 * (1 - Math.cos(elapsed))`. Found in a production
+  build (TechInsight), where it had shipped unnoticed.
 
 ## Host-page integration
 
@@ -173,8 +183,11 @@ photos → interaction → reproducibility → host-page integration).
   host's own language so copy renders through its component/i18n system, and keep only
   the DOM-independent parts (seeded RNG, curve, easing). See
   `references/production-lessons.md`.
-- **Loading screen never disappears** → the "ready" signal is waiting on a render that
-  never gets requested (no WebGL2 → static fallback path, or the canvas starts
+- **Loading screen never disappears** → since 1.11.0, take the loader down from
+  `config.onReady`: the engine calls it once, one frame after its first frame is drawn
+  or after it shows the static fallback (`{ webgl: false }`), and not at all after
+  `dispose()`. On older versions, or a hand-rolled engine: the "ready" signal is
+  waiting on a render that never gets requested (no WebGL2 → static fallback path, or the canvas starts
   off-screen under an `IntersectionObserver` gate) or on a listener that subscribed
   after the event already fired. Build in the three exits and make ready idempotent —
   see `references/production-lessons.md`. Also confirm the loader isn't mounted inside

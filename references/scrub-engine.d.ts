@@ -169,6 +169,19 @@ export interface FlyoverConfig {
    * directly and draws exactly what it drew before 1.9.0.
    */
   effects?: FlyoverEffects | null;
+  /**
+   * Called once, one frame after there is something on screen: the first frame drawn
+   * (`webgl: true`), or the static fallback card when WebGL2 is unavailable
+   * (`webgl: false`). For taking down a loader. Not called after `dispose()`. A mount
+   * that starts off-screen calls it when it first scrolls into view. Since 1.11.0.
+   */
+  onReady?: ((info: ReadyInfo) => void) | null;
+}
+
+/** What `config.onReady` is told. */
+export interface ReadyInfo {
+  /** `false` when the page is showing the static fallback instead of a WebGL scene. */
+  webgl: boolean;
 }
 
 /** What the engine tells `config.effects` about each frame it draws. */

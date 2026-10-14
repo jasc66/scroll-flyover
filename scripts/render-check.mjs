@@ -378,6 +378,51 @@ const disposedAll = await allPage.evaluate(() => { window.__sfHandle.dispose(); 
 check('dispose() with every effect mounted tears down cleanly', disposedAll === false);
 await allPage.close();
 
+console.log('\n=== 10) onReady (1.11.0): once, after the first frame, and only when asked ===');
+const openPlain = async (query) => {
+  const p = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  p.on('pageerror', (e) => errors.push(e.message));
+  p.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await p.goto(`${url}${query}`, { waitUntil: 'networkidle', timeout: 60000 });
+  await p.waitForFunction(() => window.__sfReady === true, null, { timeout: 30000 });
+  return p;
+};
+// Enough frames for a deferred callback, or a second one, to have run.
+const someFrames = (target) => target.evaluate(() => new Promise((resolve) => {
+  let n = 10;
+  const step = () => (--n ? requestAnimationFrame(step) : resolve());
+  requestAnimationFrame(step);
+}));
+const readyCalls = (target) => target.evaluate(() => window.__sfReadyCalls);
+
+const readyPage = await openPlain('?onready=1');
+await someFrames(readyPage);
+await scrollThrough(readyPage, 0.1, 0.5, 6);
+const calls = await readyCalls(readyPage);
+check('onReady is called exactly once, with webgl: true', calls.length === 1 && calls[0].info.webgl === true, JSON.stringify(calls));
+check('onReady runs after mountScrollFlyover() has returned the handle', calls[0]?.handleSet === true);
+const readyFrame = await renderAt(0.5, undefined, readyPage);
+const unreadyPage = await openPlain('');
+const unreadyFrame = await renderAt(0.5, undefined, unreadyPage);
+check('passing onReady changes no pixel', readyFrame.png === unreadyFrame.png);
+check('without onReady nothing is called', (await readyCalls(unreadyPage)).length === 0);
+await readyPage.close();
+await unreadyPage.close();
+
+const disposedEarly = await openPlain('?onready=dispose');
+await someFrames(disposedEarly);
+check('a mount disposed before its first frame never calls onReady', (await readyCalls(disposedEarly)).length === 0);
+await disposedEarly.close();
+
+const noWebgl = await openPlain('?onready=1&nowebgl=1');
+await someFrames(noWebgl);
+const fallbackCalls = await readyCalls(noWebgl);
+const fallbackCard = await noWebgl.evaluate(() => !!document.querySelector('[data-sf-fallback]'));
+check('without WebGL2, onReady is called once with webgl: false, over the fallback card',
+  fallbackCard && fallbackCalls.length === 1 && fallbackCalls[0].info.webgl === false && fallbackCalls[0].handleSet,
+  JSON.stringify(fallbackCalls));
+await noWebgl.close();
+
 await browser.close();
 server.close();
 
