@@ -65,6 +65,35 @@ const scrollFrame = () => page.evaluate(() => new Promise((resolve) => {
   }));
 }));
 
+// The frame a visitor who has stopped scrolling sees. The swoop bank averages five
+// frames, so "stopped" means five frames at rest, not a fixed wait: on a CI runner
+// SwiftShader can draw only a few frames a second, and 300ms was measured to fall
+// short there (first CI run of 1.8.0 failed at 0.83 only). Read until two
+// consecutive frames agree.
+const settledScrollFrame = async (maxReads = 40) => {
+  let last = await scrollFrame();
+  for (let i = 0; i < maxReads; i++) {
+    const next = await scrollFrame();
+    if (next === last) return next;
+    last = next;
+  }
+  throw new Error(`scroll-driven frame never settled in ${maxReads} reads`);
+};
+
+// The composited page once it stops changing — same idea, for the checks that have to
+// read the screen rather than the canvas. If the loop were repainting from the scroll
+// position, the page would settle on that frame instead, so waiting hides nothing.
+const stableScreenshot = async (maxReads = 40) => {
+  let last = await page.screenshot();
+  for (let i = 0; i < maxReads; i++) {
+    await page.waitForTimeout(150);
+    const next = await page.screenshot();
+    if (next.equals(last)) return next;
+    last = next;
+  }
+  throw new Error(`page never settled in ${maxReads} screenshots`);
+};
+
 // The exact progress the engine computes for the current scroll position — same
 // formula as currentScrollT(): the container is the spacer's height, and the
 // scrollable span is that minus the viewport the spacer was built from.
@@ -114,10 +143,9 @@ console.log('\n=== 3) the held frame survives the scroll loop ===');
 // is the composited page, so compare screenshots — the pin wrapper is sticky, so the
 // canvas and overlay sit at the same place on screen at any scroll position.
 await renderAt(0.2);
-await page.waitForTimeout(300);
-const heldShot = await page.screenshot();
+const heldShot = await stableScreenshot();
 await scrollTo(0.8);
-const scrolledShot = await page.screenshot();
+const scrolledShot = await stableScreenshot();
 check('scrolling while held does not repaint the canvas', heldShot.equals(scrolledShot),
   'if the loop read the scroll position, the screen would now show the frame at 0.8');
 const copyWhileHeld = await page.$$eval('.sf-section', (els) => els.map((el) => el.style.opacity));
@@ -129,7 +157,7 @@ for (const target of [0.25, 0.5, 0.83]) {
   await page.evaluate(() => window.__sfHandle.resume());
   await scrollTo(target);
   const p = await scrollProgress();
-  const scrolled = await scrollFrame();
+  const scrolled = await settledScrollFrame();
   const requested = await renderAt(p);
   check(`scroll-driven frame at ${p.toFixed(4)} equals renderAt(${p.toFixed(4)})`, scrolled === requested.png);
 }
@@ -138,7 +166,7 @@ console.log('\n=== 5) resume() hands the camera back to the scroll position ==='
 await renderAt(0.05);
 await page.evaluate(() => window.__sfHandle.resume());
 await scrollTo(0.9);
-const resumed = await scrollFrame();
+const resumed = await settledScrollFrame();
 const atNinety = await renderAt(await scrollProgress());
 check('after resume, the loop paints the scrolled-to frame', resumed === atNinety.png);
 await page.evaluate(() => window.__sfHandle.resume());
