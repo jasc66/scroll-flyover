@@ -18,14 +18,14 @@
     "scroll-flyover": "bin/install.js"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test",
     "qa": "node scripts/qa.mjs",
     "qa:a11y": "node scripts/a11y-check.mjs",
     "qa:render": "node scripts/render-check.mjs",
     "serve": "node scripts/serve.mjs",
     "check:package": "node scripts/check-package.mjs",
     "check": "node --check bin/install.js && npm test && node scripts/check-package.mjs",
-    "check:types": "tsc -p test/types",
+    "check:types": "tsc -p types-test",
     "lint:package": "publint --strict && attw --pack . --profile esm-only"
   },
   "files": [

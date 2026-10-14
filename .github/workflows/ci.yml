@@ -123,7 +123,7 @@ jobs:
       - name: Pack and confirm the entry points are in the tarball
         run: npm run check:package
       - name: Type declarations compile against a consumer
-        # test/types/usage.ts imports the package by name, so this resolves through
+        # types-test/usage.ts imports the package by name, so this resolves through
         # `exports` the way a consumer's compiler would, and its @ts-expect-error lines
         # fail if the declarations stop rejecting a config the engine throws on.
         run: npm run check:types

@@ -1,4 +1,8 @@
-// Compiled by `npm run check:types`, never run. Imports the package by name, so it
+// Compiled by `npm run check:types`, never run. Lives outside test/ on purpose: from
+// Node 22.18 type stripping is on by default and `node --test` then also collects
+// test/**/*.ts, so in there this file would be executed as a test and fail.
+//
+// It imports the package by name, so it
 // resolves through package.json `exports` exactly as a consumer's would — a broken
 // `types` condition fails here, not only a wrong declaration.
 //

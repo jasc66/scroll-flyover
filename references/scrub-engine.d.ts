@@ -2,7 +2,7 @@
  * Type declarations for scroll-flyover's scrub engine (references/scrub-engine.js).
  *
  * Hand-written rather than generated, so the engine stays a single build-free ES
- * module. Kept honest by test/types/, which `npm run check:types` compiles against
+ * module. Kept honest by types-test/, which `npm run check:types` compiles against
  * this file: a declaration that drifts from what the engine accepts breaks CI there.
  *
  * Three.js types come from `@types/three` — an optional peer, like `three` itself.

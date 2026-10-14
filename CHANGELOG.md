@@ -11,6 +11,18 @@ the `bin` installer. Builds that
 Claude Code generates through `SKILL.md` vendor a frozen copy of the engine, so they
 are unaffected by upgrades here until they are regenerated.
 
+## [Unreleased]
+
+### Changed
+
+- The type fixture moved from `test/types/` to `types-test/`, and `npm test` is bare
+  `node --test` again. 1.8.1's `node --test test/*.test.mjs` relied on something
+  expanding the glob: the shell does on Linux, Node does from 21, but on Windows (where
+  npm runs scripts through cmd.exe) with Node 20 nothing did. Outside `test/`, the
+  fixture is out of the default pattern that Node 22.18+ widens to `.ts` files.
+  Checked on Node 20, 22.12 and 22.20: 54/54. Repo-only; nothing in the tarball changes
+  except a path in a comment in `scrub-engine.d.ts`.
+
 ## [1.8.1] - 2026-10-14
 
 ### Added
