@@ -13,6 +13,8 @@ are unaffected by upgrades here until they are regenerated.
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-14
+
 What putting a production site (TechInsight, blog-tecno.vercel.app) into the demo
 gallery showed was missing. A page that does not pass `onReady` draws what it drew on
 1.10.0: 54 frames — no effects, depth of field, and grain + blur + depth of field;

@@ -43,29 +43,26 @@ item below follows:
 | 1.8.1 | TypeScript declarations | Phase 3 (part) |
 | 1.9.0 | `scroll-flyover/effects`: film grain and velocity motion blur behind `config.effects` | Separate entry point |
 | 1.10.0 | Depth of field from the camera's place on the path, `frame.landing` / `focusDistance`, `landingAt` | Measured on an Apple M2 only; still to measure on an integrated GPU |
+| 1.11.0 | `config.onReady`, `qa-reproducibility.mjs --reduced-motion`, ticks as a function of `elapsed` | From putting a production site (TechInsight) into the demo gallery |
 
 ## Next, in order
 
-1. **Ship 1.11.0** (on branch `engine-lessons-from-techinsight`): `config.onReady`,
-   `qa-reproducibility.mjs --reduced-motion`, and the rule that a tick is a function of
-   `elapsed`. All three came from putting a production site, TechInsight, into the
-   demo gallery. Then bump the gallery to 1.11.0.
-2. **Capture example: done in the gallery** (`scroll-flyover-demo`,
+1. **Capture example: done in the gallery** (`scroll-flyover-demo`,
    `scripts/capture.mjs`, `renderAt` into `ffmpeg`). Still to do: expose the handle in
    the other four examples, record one video each, and put them in this README.
-3. **Upgrade TechInsight itself** from `^1.4.0`. Since 1.6.0 a `cta` needs a
+2. **Upgrade TechInsight itself** from `^1.4.0`. Since 1.6.0 a `cta` needs a
    destination, so its forum button moves to `ctaHref`; its community tick stops
    accumulating per frame; its banner links leave the `aria-hidden` block; its loader
    moves to `onReady`. It is the first real consumer, so this upgrade is the proof
    that one can move forward without breakage.
-4. **React / Next.js wrapper** (`dynamic(..., { ssr: false })`). The condition this
+3. **React / Next.js wrapper** (`dynamic(..., { ssr: false })`). The condition this
    item waited on is met: TechInsight is on Next and hand-wrote what a wrapper would
    own (client-only mount, dispose on unmount, loader, CTA through the router).
    Validated by moving TechInsight onto it with identical frames before and after.
-5. **Measure depth of field on an integrated GPU.** Only measured on an Apple M2.
-6. **Ask the consumers what they are building** before freezing more API surface. A
+4. **Measure depth of field on an integrated GPU.** Only measured on an Apple M2.
+5. **Ask the consumers what they are building** before freezing more API surface. A
    "Showcase" issue template is the cheapest channel.
-7. **Scene recipes as executable code** instead of markdown. Last: it freezes the most
+6. **Scene recipes as executable code** instead of markdown. Last: it freezes the most
    API, and it is still the most speculative piece.
 
 Open question, not scheduled: **porting the skill to other coding agents** (GitHub
